@@ -1,0 +1,11 @@
+%C - feed USB keyboard input into a tty
+
+Syntax:
+%C [-v] [tty]
+
+   tty   character device that receives the key presses (default /dev/ser10)
+   -v    print the raw key usages
+
+Key presses on any USB (HID) keyboard are injected into the input of the
+given tty as if they had been typed on it, so a keyboard can drive the shell
+of a serial console. US layout, no key repeat. Requires io-hid -d usb.
