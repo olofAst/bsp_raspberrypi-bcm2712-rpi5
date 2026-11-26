@@ -302,11 +302,72 @@ static int find_msix_cap(void)
     return -1;
 }
 
+
+/* Diagnostic dump of the root complex state as left by the firmware */
+static void dump_rc(void)
+{
+    unsigned n;
+
+    (void)fprintf(stderr, "PCIe2 RC @0x%llx:\n", (unsigned long long)RC_PADDR);
+    (void)fprintf(stderr, "  status 0x%08x  misc_ctrl 0x%08x  pcie_ctrl 0x%08x\n",
+                  in32(rc + RC_PCIE_STATUS), in32(rc + 0x4008U), in32(rc + 0x4064U));
+    (void)fprintf(stderr, "  bridge cfg: id 0x%08x cmd/sts 0x%08x class 0x%08x buses 0x%08x\n",
+                  in32(rc + 0x00U), in32(rc + RC_CFG_COMMAND), in32(rc + 0x08U), in32(rc + RC_CFG_BUSES));
+    (void)fprintf(stderr, "              io 0x%08x mem 0x%08x pref 0x%08x\n",
+                  in32(rc + 0x1cU), in32(rc + RC_CFG_MEM_BASE_LIMIT), in32(rc + 0x24U));
+    for (n = 0; n < 4U; n++) {
+        (void)fprintf(stderr, "  outbound win%u: pci lo/hi 0x%08x/0x%08x base_limit 0x%08x base_hi 0x%08x limit_hi 0x%08x\n", n,
+                      in32(rc + RC_CPU_2_PCIE_MEM_WIN0_LO + (n * 8U)), in32(rc + RC_CPU_2_PCIE_MEM_WIN0_HI + (n * 8U)),
+                      in32(rc + RC_MEM_WIN0_BASE_LIMIT + (n * 4U)), in32(rc + RC_MEM_WIN0_BASE_HI + (n * 8U)),
+                      in32(rc + RC_MEM_WIN0_BASE_HI + 4U + (n * 8U)));
+    }
+    for (n = 1; n <= RC_NUM_INBOUND_WINS; n++) {
+        struct ibar w;
+        ibar_read(n, &w);
+        (void)fprintf(stderr, "  inbound win%u: cfg 0x%08x/0x%08x remap 0x%08x/0x%08x  pci 0x%llx -> cpu 0x%llx size 0x%llx%s\n", n,
+                      in32(rc + ibar_cfg_lo(n)), in32(rc + ibar_cfg_lo(n) + 4U),
+                      in32(rc + ibar_remap_lo(n)), in32(rc + ibar_remap_lo(n) + 4U),
+                      (unsigned long long)w.pci, (unsigned long long)w.cpu, (unsigned long long)w.size,
+                      w.enabled ? "" : " (off)");
+    }
+}
+
+static void dump_rp1_cfg(void)
+{
+    unsigned r;
+
+    (void)fprintf(stderr, "RP1 config space (index 0x%x):\n", rp1_cfg_index);
+    for (r = 0; r < 0x40U; r += 16U) {
+        (void)fprintf(stderr, "  %02x: %08x %08x %08x %08x\n", r, rp1_cfg_rd(r), rp1_cfg_rd(r + 4U),
+                      rp1_cfg_rd(r + 8U), rp1_cfg_rd(r + 12U));
+    }
+}
+
+/*
+ * Outbound window 0: CPU 0x1f_0000_0000 -> PCI 0x0, 4 GB (the layout the
+ * firmware's device tree describes for pcie2).
+ */
+#define RP1_WIN_CPU     0x1f00000000ULL
+static void force_outbound_window(void)
+{
+    const uint32_t base_mb = (uint32_t)(RP1_WIN_CPU >> 20);
+    const uint32_t limit_mb = (uint32_t)((RP1_WIN_CPU + 0xfffffffbULL) >> 20);
+
+    out32(rc + RC_CPU_2_PCIE_MEM_WIN0_LO, 0U);
+    out32(rc + RC_CPU_2_PCIE_MEM_WIN0_HI, 0U);
+    out32(rc + RC_MEM_WIN0_BASE_LIMIT, ((limit_mb & 0xfffU) << 20) | ((base_mb & 0xfffU) << 4));
+    out32(rc + RC_MEM_WIN0_BASE_HI, (base_mb >> 12) & 0xffU);
+    out32(rc + RC_MEM_WIN0_BASE_HI + 4U, (limit_mb >> 12) & 0xffU);
+}
+
 static void usage(void)
 {
     (void)fprintf(stderr,
         "msix-rp1 [-v] [-i irq[,irq...]]   configure RP1 MSI-X interrupts\n"
         "msix-rp1 -B                       print the bus-master (DMA) offset for bmstr=\n"
+        "msix-rp1 -d                       dump the PCIe root complex / RP1 state, change nothing\n"
+        "msix-rp1 -f ...                   also assign bus numbers, BARs and windows if the\n"
+        "                                  firmware left the RP1 link unconfigured\n"
         "msix-rp1 -c                       disable RP1 MSI-X\n");
 }
 
@@ -314,15 +375,21 @@ int main(const int argc, char * const argv[])
 {
     unsigned irq_list[RP1_NUM_IRQS] = { 6, RP1_IRQ_USBHOST0, RP1_IRQ_USBHOST1 };
     unsigned irq_num = 3;
-    int opt, cleanup = 0, query_bmstr = 0;
+    int opt, cleanup = 0, query_bmstr = 0, dump_only = 0, force = 0;
 
-    while ((opt = getopt(argc, argv, "Bci:v")) != -1) {
+    while ((opt = getopt(argc, argv, "Bcdfi:v")) != -1) {
         switch (opt) {
             case 'B':
                 query_bmstr = 1;
                 break;
             case 'c':
                 cleanup = 1;
+                break;
+            case 'd':
+                dump_only = 1;
+                break;
+            case 'f':
+                force = 1;
                 break;
             case 'i': {
                 char *str = optarg;
@@ -360,6 +427,10 @@ int main(const int argc, char * const argv[])
         return EXIT_SUCCESS;
     }
 
+    if (dump_only || (verbose > 1)) {
+        dump_rc();
+    }
+
     /* A config access to the secondary bus without a link aborts the CPU: check first */
     const uint32_t status = in32(rc + RC_PCIE_STATUS);
     if ((status & (RC_PCIE_STATUS_DL_ACTIVE | RC_PCIE_STATUS_PHYLINKUP)) !=
@@ -369,19 +440,74 @@ int main(const int argc, char * const argv[])
         return EXIT_FAILURE;
     }
 
-    const uint32_t buses = in32(rc + RC_CFG_BUSES);
-    const unsigned sec_bus = (buses >> 8) & 0xffU;
+    uint32_t buses = in32(rc + RC_CFG_BUSES);
+    unsigned sec_bus = (buses >> 8) & 0xffU;
     if (sec_bus == 0U) {
-        (void)fprintf(stderr, "msix-rp1: root bridge has no secondary bus assigned (0x%x), firmware did not set up RP1\n", buses);
-        return EXIT_FAILURE;
+        if (dump_only) {
+            sec_bus = 1;        /* peek at where RP1 would be */
+        }
+        else if (force) {
+            /* primary 0, secondary 1, subordinate 1 */
+            out32(rc + RC_CFG_BUSES, (buses & 0xff000000U) | 0x00010100U);
+            buses = in32(rc + RC_CFG_BUSES);
+            sec_bus = (buses >> 8) & 0xffU;
+            (void)fprintf(stderr, "msix-rp1: assigned bus numbers to the root bridge (0x%x)\n", buses);
+        }
+        if (sec_bus == 0U) {
+            (void)fprintf(stderr, "msix-rp1: root bridge has no secondary bus assigned (0x%x): the firmware left the\n"
+                                  "          RP1 link unconfigured. 'msix-rp1 -d' dumps the state, 'msix-rp1 -f' configures it.\n", buses);
+            return EXIT_FAILURE;
+        }
     }
     rp1_cfg_index = sec_bus << 20;      /* bus:0.0 */
 
     const uint32_t id = rp1_cfg_rd(0);
+    if (dump_only || (verbose > 1)) {
+        dump_rp1_cfg();
+    }
+    if (dump_only) {
+        return EXIT_SUCCESS;
+    }
     if (id != RP1_VID_DID) {
         (void)fprintf(stderr, "msix-rp1: unexpected device %04x:%04x on bus %u (expected RP1 1de4:0001)\n",
                       id & 0xffffU, id >> 16, sec_bus);
         return EXIT_FAILURE;
+    }
+
+    uint32_t bar0 = rp1_cfg_rd(PCI_BAR(0)) & ~0xfU;
+    uint32_t bar1 = rp1_cfg_rd(PCI_BAR(1)) & ~0xfU;
+    uint32_t cmd = rp1_cfg_rd(PCI_COMMAND);
+
+    if (force) {
+        /*
+         * Give RP1 the address layout Linux uses when it is missing:
+         * BAR1 (peripherals, 4M) at 0, BAR2 (SRAM, 64K) at 0x400000,
+         * BAR0 (MSI-X table, 16K) at 0x410000; bridge window 0..0x5fffff.
+         */
+        if (bar0 == bar1) {
+            uint32_t bar2 = rp1_cfg_rd(PCI_BAR(2)) & ~0xfU;
+            rp1_cfg_wr(PCI_COMMAND, cmd & 0xfff8U);     /* decode off while moving BARs */
+            if (bar2 == bar1) {
+                rp1_cfg_wr(PCI_BAR(1), 0x00000000U);
+                rp1_cfg_wr(PCI_BAR(2), 0x00400000U);
+                bar2 = 0x00400000U;
+            }
+            rp1_cfg_wr(PCI_BAR(0), (bar2 == 0x00400000U) ? 0x00410000U : (bar2 + 0x00010000U));
+            bar0 = rp1_cfg_rd(PCI_BAR(0)) & ~0xfU;
+            bar1 = rp1_cfg_rd(PCI_BAR(1)) & ~0xfU;
+            (void)fprintf(stderr, "msix-rp1: assigned RP1 BARs: BAR0 0x%x BAR1 0x%x BAR2 0x%x\n", bar0, bar1,
+                          rp1_cfg_rd(PCI_BAR(2)) & ~0xfU);
+        }
+        if ((in32(rc + RC_CFG_MEM_BASE_LIMIT) >> 16) < 0x0050U) {
+            out32(rc + RC_CFG_MEM_BASE_LIMIT, 0x00500000U);
+        }
+        if ((in32(rc + RC_MEM_WIN0_BASE_HI) & 0xffU) == 0U) {
+            force_outbound_window();
+            (void)fprintf(stderr, "msix-rp1: programmed outbound window 0\n");
+        }
+        cmd = (cmd & 0xffffU) | PCI_COMMAND_MEMORY | PCI_COMMAND_MASTER;
+        rp1_cfg_wr(PCI_COMMAND, cmd);
+        out32(rc + RC_CFG_COMMAND, (in32(rc + RC_CFG_COMMAND) & 0xffffU) | PCI_COMMAND_MEMORY | PCI_COMMAND_MASTER);
     }
 
     /* CPU address of PCI memory address 0 (outbound window 0) */
@@ -390,9 +516,6 @@ int main(const int argc, char * const argv[])
                              ((uint64_t)((win_bl & 0xfff0U) >> 4) << 20);
     const uint64_t win_pci = ((uint64_t)in32(rc + RC_CPU_2_PCIE_MEM_WIN0_HI) << 32) |
                              in32(rc + RC_CPU_2_PCIE_MEM_WIN0_LO);
-    const uint32_t bar0 = rp1_cfg_rd(PCI_BAR(0)) & ~0xfU;
-    const uint32_t bar1 = rp1_cfg_rd(PCI_BAR(1)) & ~0xfU;
-    uint32_t cmd = rp1_cfg_rd(PCI_COMMAND);
 
     vprint(1, "RP1 on bus %u: cmd 0x%04x BAR0 0x%08x BAR1 0x%08x BAR2 0x%08x\n", sec_bus, cmd & 0xffffU,
            bar0, bar1, rp1_cfg_rd(PCI_BAR(2)) & ~0xfU);
@@ -400,17 +523,12 @@ int main(const int argc, char * const argv[])
            (unsigned long long)win_cpu, (unsigned long long)win_pci, in32(rc + RC_CFG_MEM_BASE_LIMIT));
 
     if ((win_cpu == 0U) || (bar0 < win_pci) || (bar1 < win_pci)) {
-        (void)fprintf(stderr, "msix-rp1: PCIe outbound window is not set up (cpu 0x%llx pci 0x%llx)\n",
+        (void)fprintf(stderr, "msix-rp1: PCIe outbound window is not set up (cpu 0x%llx pci 0x%llx); try -f\n",
                       (unsigned long long)win_cpu, (unsigned long long)win_pci);
         return EXIT_FAILURE;
     }
     if (bar0 == bar1) {
-        /*
-         * The MSI-X table BAR has not been given an address of its own. Assigning
-         * one would mean re-doing the firmware's bus configuration, which this
-         * utility deliberately does not do.
-         */
-        (void)fprintf(stderr, "msix-rp1: RP1 BAR0 (MSI-X table) is not assigned by the firmware (BAR0 = BAR1 = 0x%x)\n", bar0);
+        (void)fprintf(stderr, "msix-rp1: RP1 BAR0 (MSI-X table) is not assigned by the firmware (BAR0 = BAR1 = 0x%x); try -f\n", bar0);
         return EXIT_FAILURE;
     }
 

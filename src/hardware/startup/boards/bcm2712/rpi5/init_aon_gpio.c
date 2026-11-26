@@ -102,8 +102,29 @@ static const uint32_t gpio_aon_bcm_d0_to_c0[BCM2712_AON_GPIO_NUM] =
 
 static void fdt_get_soc_stepping(void)
 {
+    /*
+     * The board revision is the authoritative source: Pi 5 rev 1.0 is the only
+     * board with the C1 stepping; Pi 5 rev 1.1 and later, CM5, CM5 Lite and
+     * Pi 500 all carry the D0 stepping. The device tree only says "d0" when the
+     * firmware managed to apply overlays/bcm2712d0.dtbo, so it cannot be relied
+     * on alone: using the C1 register layout on a D0 part touches registers
+     * that do not exist and raises an SError that kills procnto at start.
+     */
+    {
+        const uint32_t rev = get_board_revision();
+        const uint32_t type = (rev >> 4) & 0xffU;
+
+        if ((type > 0x17U) || ((type == 0x17U) && ((rev & 0xfU) >= 1U))) {
+            bcm2712_stepping = BCM2712_STEPPING_D0;
+            gpio_bank_widths[0] = BCM2712D0_AON_GPIO_BANK0_GPIO;
+            if (debug_flag > 1) {
+                kprintf("board revision %x: BCM2712 D0 stepping\n", rev);
+            }
+            return;
+        }
+    }
+
     if (fdt == NULL) {
-        kprintf("No FDT: assuming BCM2712 C1 stepping for AON GPIO layout\n");
         return;
     }
     int node_offset = fdt_node_offset_by_compatible(fdt, -1, "brcm,bcm2712d0-aon-pinctrl");

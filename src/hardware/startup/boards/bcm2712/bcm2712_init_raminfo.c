@@ -106,6 +106,7 @@ void bcm2712_init_raminfo(void) {
         as_add_containing(BCM2712_DRAM_BASE,  vcram_start - 1, AS_ATTR_RAM, "below1G", "ram");
     }
 
+    kprintf("board rev %x: %u MB RAM, vcram %P+%x\n", rev, (unsigned)(ramsize >> 20), vcram_start, vcram_size);
     if (debug_flag > 3) {
         kprintf("vcram start-size: %P-%P, memory size: %l\n", vcram_start, vcram_size, ramsize);
     }

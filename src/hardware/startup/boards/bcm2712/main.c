@@ -44,6 +44,7 @@
 
 #include <startup.h>
 #include <arm/pl011.h>
+#include <libfdt.h>
 #include <aarch64/psci.h>
 #include "hwinfo_private.h"
 #include <drvr/hwinfo.h>
@@ -115,6 +116,56 @@ void cpu_tweak_cmdline(struct bootargs_entry *bap, const char * const name) {
 }
 
 /**
+ * Bring-up aid: print the RAM layout the firmware put in the device tree, to
+ * compare with what bcm2712_init_raminfo() derives from the board revision.
+ */
+static void fdt_print_memory(void)
+{
+    int node = -1;
+
+    if (fdt == NULL) {
+        return;
+    }
+    for (;;) {
+        int len, i;
+        node = fdt_node_offset_by_prop_value(fdt, node, "device_type", "memory", sizeof("memory"));
+        if (node < 0) {
+            break;
+        }
+        const fdt32_t * const reg = fdt_getprop(fdt, node, "reg", &len);
+        if (reg == NULL) {
+            continue;
+        }
+        kprintf("FDT memory:");
+        for (i = 0; i < (len / (int)sizeof(fdt32_t)); i++) {
+            kprintf(" %x", fdt32_to_cpu(reg[i]));
+        }
+        kprintf("\n");
+    }
+}
+
+/**
+ * Bring-up aid: report whether an asynchronous external abort (SError) is
+ * pending. Aborts are masked while startup runs, so a bad access made here
+ * only blows up later, as a SIGBUS in procnto the moment it unmasks them.
+ */
+static void serror_check(const char * const where)
+{
+    static unsigned reported;
+    const uint32_t isr = aa64_sr_rd32(isr_el1);
+
+    if ((isr & (1U << 8)) != 0U) {
+        if (!reported) {
+            kprintf("*** SError pending after: %s (ISR_EL1=%x)\n", where, isr);
+            reported = 1;
+        }
+    }
+    else if (debug_flag > 1) {
+        kprintf("no SError after %s\n", where);
+    }
+}
+
+/**
  * Locate the flattened device tree handed over by the firmware.
  * The FDT is only used for optional information (SoC stepping, MAC address
  * fallback); everything essential comes from the VideoCore mailbox, so a
@@ -169,6 +220,7 @@ int main(const int argc, char ** const argv)
     /* Initialize the default debug interface for now. */
     select_debug(&debug_devices[0], sizeof(debug_devices[0]));
     kprintf(".....\n");
+    serror_check("entry");
     while ((opt = getopt(argc, argv, COMMON_OPTIONS_STRING "W:")) != -1) {
         switch (opt) {
             case 'W':
@@ -202,12 +254,15 @@ int main(const int argc, char ** const argv)
      * SDP 7.1 has no "-u reg" startup option, so pick it up here.
      */
     bcm2712_fdt_init();
+    serror_check("fdt_init");
+    fdt_print_memory();
 
     cpu_freq = mbox_get_clock_rate(MBOX_CLK_ARM);
     cycles_freq = cpu_freq;
     timer_freq = 0;
 
     bcm2712_init_raminfo();
+    serror_check("init_raminfo (mailbox)");
 
     /*
      * Remove RAM used by modules in the image
@@ -222,6 +277,7 @@ int main(const int argc, char ** const argv)
     psci_call = &psci_smc;
 
     init_smp();
+    serror_check("init_smp");
 
     if (debug_flag > 3) {
         uint32_t i;
@@ -256,16 +312,21 @@ int main(const int argc, char ** const argv)
     }
 
     init_pcie_ext_msi_controller();
+    serror_check("init_pcie_ext_msi_controller (MIP1)");
 
     init_intrinfo();
+    serror_check("init_intrinfo (GIC)");
 
     init_qtime();
+    serror_check("init_qtime");
 
     init_cacheattr();
 
     init_cpuinfo();
+    serror_check("init_cpuinfo");
 
     init_hwinfo();
+    serror_check("init_hwinfo");
 
     board_rev = get_board_revision();
     add_typed_string(_CS_MACHINE, get_board_name(board_rev));
@@ -273,12 +334,14 @@ int main(const int argc, char ** const argv)
     add_typed_string(_CS_ARCHITECTURE, get_soc_name(board_rev));
     add_typed_string(_CS_HW_SERIAL, get_board_serial());
     init_gpio_aon_bcm();
+    serror_check("init_gpio_aon_bcm");
     /*
      * Load bootstrap executables in the image file system and Initialize
      * various syspage pointers. This must be the _last_ initialization done
      * before transferring control to the next program.
      */
     init_system_private();
+    serror_check("init_system_private");
 
     print_syspage();
 

@@ -1,0 +1,13 @@
+%C - read or write physical (device) memory
+
+Syntax:
+%C [-w width] address [count]          read
+%C [-w width] address = value          write
+
+   -w width   access width in bytes: 1, 2, 4 (default) or 8
+   address, count and value accept 0x prefixes
+
+Examples:
+   %C 0x1f00200000 4        four 32-bit words from the first RP1 xHCI
+   %C 0x1000124068          PCIe2 root complex status
+WARNING: an access to an address nothing answers on can crash the system.

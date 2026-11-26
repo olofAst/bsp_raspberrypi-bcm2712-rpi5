@@ -20,7 +20,7 @@
     #  '-v'           -> increase verbosity (repeat for more)
     #  '-W [timeout]' -> enable the watchdog (timeout in ms). If you add it, you MUST also
     #                    uncomment the wdtkick line in the startup script below.
-    startup-bcm2712-rpi5 -v
+    startup-bcm2712-rpi5 -vv
     PATH=/proc/boot:/sbin:/bin:/usr/bin:/usr/sbin LD_LIBRARY_PATH=/proc/boot:/lib:/usr/lib:/lib/dll procnto-smp-instr -v
 }
 
@@ -113,11 +113,25 @@ rp1_start.sh = {
 # Program the RP1 MSI-X vectors: 6=Ethernet 31=USB host 0 36=USB host 1,
 # 25/42..46=UART0..5. RP1 irq n is delivered as GIC interrupt 160+n.
 echo "Configuring RP1 interrupts ..."
-msix-rp1 -i 6,31,36,25,42,43,44,45,46
+if msix-rp1 -i 6,31,36,25,42,43,44,45,46; then
+    echo ok > /dev/shmem/rp1_ok
+else
+    echo "RP1 is not usable: USB, RP1 UARTs and RP1 GPIO are disabled."
+    echo "  msix-rp1 -d       dump the PCIe/RP1 state"
+    echo "  msix-rp1 -f -vv   try to configure the RP1 link here, then: ksh /proc/boot/usb_start.sh"
+fi
 }
 
 usb_start.sh = {
 #!/bin/sh
+if [ ! -e /dev/shmem/rp1_ok ]; then
+    # second chance when started by hand after "msix-rp1 -f"
+    msix-rp1 -i 6,31,36,25,42,43,44,45,46 && echo ok > /dev/shmem/rp1_ok
+fi
+if [ ! -e /dev/shmem/rp1_ok ]; then
+    echo "Not starting USB: RP1 is not configured"
+    exit 1
+fi
 echo "Starting USB xHCI host controllers (/dev/usb/io-usb-otg) ..."
 
 # VBUS enable / over-current pins of the four type A ports
@@ -140,9 +154,14 @@ net_start.sh = {
 #!/bin/sh
 # There is no SDP 7.1 driver for the RP1 on-board Ethernet MAC. USB Ethernet adapters
 # (ASIX AX88xxx, SMSC LAN95xx, CDC-ECM) work through the USB host controllers.
-echo "Starting network stack ..."
-io-pkt-v6-hc -d asix -d smsc9500 -d usbnet
-if_up -p -r 3 en0 && dhclient -m -lf /dev/shmem/dhclient.leases -pf /dev/shmem/dhclient.pid -nw en0
+if [ -e /dev/usb/io-usb-otg ]; then
+    echo "Starting network stack ..."
+    io-pkt-v6-hc -d asix -d smsc9500 -d usbnet
+    if_up -p -r 3 en0 && dhclient -m -lf /dev/shmem/dhclient.leases -pf /dev/shmem/dhclient.pid -nw en0
+else
+    echo "No USB: starting network stack without drivers"
+    io-pkt-v6-hc
+fi
 
 devc-pty
 qconn
@@ -301,6 +320,7 @@ openssl     tags=*
 /sbin/msix-rp1=msix-rp1
 /sbin/fan-rpi5=fan-rpi5
 /bin/fbdemo-rpi5=fbdemo-rpi5
+/bin/peek=peek
 
 
 ################################################################################################
