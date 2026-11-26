@@ -1,11 +1,13 @@
 %C - draw into the Raspberry Pi firmware framebuffer (HDMI)
 
 Syntax:
-%C [-w width] [-h height] [-n]
+%C [-w width] [-h height] [-b depth] [-n]
 
 Options:
    -w width    Framebuffer width in pixels (default 640)
    -h height   Framebuffer height in pixels (default 480)
+   -b depth    Bits per pixel to ask for: 32 (default), 24 or 16. The demo
+               draws in whatever depth the firmware actually grants.
    -n          Do not wait for Enter before exiting
 
 The framebuffer is requested from the VideoCore firmware through the

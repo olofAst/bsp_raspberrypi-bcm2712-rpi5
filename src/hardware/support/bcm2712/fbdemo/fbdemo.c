@@ -44,7 +44,7 @@
 #define MBOX_TAG_SETPXLORDR 0x00048006U
 #define MBOX_TAG_SETVIRTOFF 0x00048009U
 
-static unsigned width, height, pitch, fb_size;
+static unsigned width, height, pitch, fb_size, depth, bytespp;
 static unsigned char *fb;
 static volatile uint32_t *mbox_regs;
 
@@ -79,7 +79,7 @@ static int mbox_call(uint32_t *buffer, uint32_t buf_phys, uint8_t channel)
     }
 }
 
-static int fb_init(unsigned req_w, unsigned req_h)
+static int fb_init(unsigned req_w, unsigned req_h, unsigned req_depth)
 {
     off_t offset;
     int i = 0;
@@ -108,7 +108,13 @@ static int fb_init(unsigned req_w, unsigned req_h)
         goto fail;
     }
 
-    /* 1st message: display mode */
+    /*
+     * One message with the mode, the allocation and the read-backs. The
+     * firmware is free to give something else than what was asked for (the
+     * Pi 5 keeps its 16 bit per pixel boot framebuffer when the depth is set
+     * in a separate message), so everything is read back and the drawing
+     * code works from what was actually granted.
+     */
     mbox[i++] = 0;                  /* total size, filled in below */
     mbox[i++] = MBOX_REQUEST;
 
@@ -131,32 +137,16 @@ static int fb_init(unsigned req_w, unsigned req_h)
     mbox[i++] = 0;
     mbox[i++] = 0;
 
+    const int setdepth = i;
     mbox[i++] = MBOX_TAG_SETDEPTH;
     mbox[i++] = 4;
     mbox[i++] = 0;
-    mbox[i++] = 32;
+    mbox[i++] = req_depth;
 
     mbox[i++] = MBOX_TAG_SETPXLORDR;
     mbox[i++] = 4;
     mbox[i++] = 0;
-    mbox[i++] = 0;                  /* 0 = BGR: a pixel word is 0xAARRGGBB */
-
-    mbox[i++] = MBOX_TAG_LAST;
-    while (i & 3) {
-        mbox[i++] = 0;
-    }
-    mbox[0] = i * sizeof(uint32_t);
-
-    if (mbox_call(mbox, buf_phys, MBOX_CH_PROP) != 0) {
-        goto fail;
-    }
-    width = mbox[setvirtwh + 3];
-    height = mbox[setvirtwh + 4];
-
-    /* 2nd message: allocate the buffer and ask for its pitch */
-    i = 0;
-    mbox[i++] = 0;
-    mbox[i++] = MBOX_REQUEST;
+    mbox[i++] = 0;                  /* 0 = BGR: a 32-bit pixel word is 0xAARRGGBB */
 
     const int allocbuf = i;
     mbox[i++] = MBOX_TAG_ALLOCFB;
@@ -180,17 +170,31 @@ static int fb_init(unsigned req_w, unsigned req_h)
     if (mbox_call(mbox, buf_phys, MBOX_CH_PROP) != 0) {
         goto fail;
     }
+    width = mbox[setvirtwh + 3];
+    height = mbox[setvirtwh + 4];
+    depth = mbox[setdepth + 3];
 
     /* The firmware returns a VC bus address: strip the alias bits */
     const uint32_t fb_addr = mbox[allocbuf + 3] & 0x3FFFFFFFU;
     fb_size = mbox[allocbuf + 4];
     pitch = mbox[getpitch + 3];
 
-    if ((fb_addr == 0) || (fb_size == 0) || (pitch == 0)) {
-        fprintf(stderr, "Firmware did not provide a framebuffer (addr 0x%x size %u pitch %u).\n"
+    if ((fb_addr == 0) || (fb_size == 0) || (pitch == 0) || (width == 0) || (height == 0)) {
+        fprintf(stderr, "Firmware did not provide a framebuffer (addr 0x%x size %u pitch %u %ux%u).\n"
                         "Is a monitor connected, and does it support %ux%u?\n",
-                        fb_addr, fb_size, pitch, req_w, req_h);
+                        fb_addr, fb_size, pitch, width, height, req_w, req_h);
         goto fail;
+    }
+
+    /* Trust the geometry over the reported depth: bytes per pixel = pitch / width */
+    bytespp = pitch / width;
+    if ((bytespp != 2) && (bytespp != 3) && (bytespp != 4)) {
+        fprintf(stderr, "Unsupported framebuffer format: %ux%u pitch %u depth %u\n", width, height, pitch, depth);
+        goto fail;
+    }
+    /* never draw past what the firmware allocated */
+    if ((height * pitch) > fb_size) {
+        height = fb_size / pitch;
     }
 
     fb = mmap_device_memory(NULL, fb_size, PROT_READ | PROT_WRITE, 0, fb_addr);
@@ -198,7 +202,8 @@ static int fb_init(unsigned req_w, unsigned req_h)
         perror("mmap_device_memory (framebuffer)");
         goto fail;
     }
-    printf("Framebuffer %ux%u, pitch %u, %u bytes at physical 0x%x\n", width, height, pitch, fb_size, fb_addr);
+    printf("Framebuffer %ux%u, %u bpp (asked %u), pitch %u, %u bytes at physical 0x%x\n",
+           width, height, bytespp * 8, req_depth, pitch, fb_size, fb_addr);
 
     munmap(mbox, 0x1000);
     close(fd);
@@ -213,7 +218,23 @@ fail:
 static void drawPixel(int x, int y, unsigned char attr)
 {
     if (x < 0 || x >= (int)width || y < 0 || y >= (int)height) return;
-    *((unsigned int *)(fb + y * pitch + x * 4)) = vgapal[attr & 0x0f];
+
+    const unsigned color = vgapal[attr & 0x0f];             /* 0xAARRGGBB */
+    unsigned char * const p = fb + (y * pitch) + (x * bytespp);
+
+    switch (bytespp) {
+        case 4:
+            *(uint32_t *)p = color;
+            break;
+        case 3:
+            p[0] = (unsigned char)color;
+            p[1] = (unsigned char)(color >> 8);
+            p[2] = (unsigned char)(color >> 16);
+            break;
+        default:    /* 2: RGB565 */
+            *(uint16_t *)p = (uint16_t)(((color >> 8) & 0xf800) | ((color >> 5) & 0x07e0) | ((color >> 3) & 0x001f));
+            break;
+    }
 }
 
 static void drawRect(int x1, int y1, int x2, int y2, unsigned char attr, int fill)
@@ -309,19 +330,20 @@ static float my_sin(float x)
 
 int main(int argc, char *argv[])
 {
-    unsigned req_w = 640, req_h = 480;
+    unsigned req_w = 640, req_h = 480, req_depth = 32;
     int opt, wait_key = 1;
 
-    while ((opt = getopt(argc, argv, "w:h:n")) != -1) {
+    while ((opt = getopt(argc, argv, "w:h:b:n")) != -1) {
         switch (opt) {
             case 'w': req_w = (unsigned)strtoul(optarg, NULL, 0); break;
             case 'h': req_h = (unsigned)strtoul(optarg, NULL, 0); break;
+            case 'b': req_depth = (unsigned)strtoul(optarg, NULL, 0); break;
             case 'n': wait_key = 0; break;
             default:  return EXIT_FAILURE;
         }
     }
 
-    if (fb_init(req_w, req_h) != 0) {
+    if (fb_init(req_w, req_h, req_depth) != 0) {
         return EXIT_FAILURE;
     }
 
