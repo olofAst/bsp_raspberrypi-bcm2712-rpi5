@@ -1,25 +1,4 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC:
  * Copyright 2007-2019, QNX Software Systems.
  *
@@ -39,6 +18,7 @@
  * http://licensing.qnx.com/license-guide/ for other information.
  * $
  */
+
 
 #include "externs.h"
 
@@ -124,8 +104,7 @@ tto(TTYDEV *ttydev, int action, int arg1)
 #endif
 			return status;
 
-		case TTO_DATA:	/* FALLTHROUGH */
-		case TTO_EVENT:
+		case TTO_DATA:
 			break;
 
 		default:
@@ -173,8 +152,9 @@ tto(TTYDEV *ttydev, int action, int arg1)
 			}
 			else
 			{
-				int	buf_n, first_pass;
+				int     buf_n, first_pass;
 
+				dev_lock (&dev->tty);
 				buf_n = min (bup->cnt, dev->dma_xfer_size - byte_cnt);
 				first_pass = &bup->buff[bup->size] - bup->tail;
 				if (buf_n <= first_pass)
@@ -192,9 +172,10 @@ tto(TTYDEV *ttydev, int action, int arg1)
 				}
 				bup->cnt -= buf_n;
 				byte_cnt += buf_n;
+				dev_unlock (&dev->tty);
 			}
-		}
-
+		}		
+		dev_lock (&dev->tty);
 		if (byte_cnt && !(dev->tty.flags & (OHW_PAGED | OSW_PAGED)))
 		{
 			atomic_set(&dev->dma_state, DMA_TX_ACTIVE);
@@ -202,7 +183,7 @@ tto(TTYDEV *ttydev, int action, int arg1)
 			dev->dst_tx.len = dev->buf_tx.len = byte_cnt;
 			dev->tinfo_tx.xfer_bytes= byte_cnt;
 			byte_cnt = 0;
-
+			dev_unlock (&dev->tty);
 #ifdef MDEBUG
 			TraceEvent(_NTO_TRACE_INSERTSUSEREVENT, 230, dev->tinfo_tx.xfer_bytes, bup->cnt);
 #endif
@@ -222,6 +203,7 @@ tto(TTYDEV *ttydev, int action, int arg1)
 			}
 #endif
 		}else{
+			dev_unlock (&dev->tty);
 			if (dev->imr & PL011_IMSC_TXIM) {
 				dev->imr &= ~PL011_IMSC_TXIM;
 				write_pl011(dev, PL011_IMSC, dev->imr);
@@ -243,27 +225,20 @@ tto(TTYDEV *ttydev, int action, int arg1)
 	 *
 	 */
 	if (dev->tty.flags & (OHW_PAGED|OSW_PAGED) && !(dev->tty.xflags & OSW_PAGED_OVERRIDE)){
-#ifdef MDEBUG
-		TraceEvent(_NTO_TRACE_INSERTSUSEREVENT, 230, dev->tty.flags, dev->tty.xflags);
+#ifdef MDEBUG	
+		TraceEvent(_NTO_TRACE_INSERTSUSEREVENT, 230, dev->tty.flags, dev->tty.xflags); 
 #endif
 		return 0;
 	}
 
+	dev_lock(&dev->tty);
 	while (((read_pl011(dev, PL011_FR) & PL011_FR_TXFF) == 0) && (bup->cnt > 0) && bytes++<1024) {
-		unsigned int error;
 		/*
 		 * Get the next character to print from the output buffer
 		 */
-		dev_lock(&dev->tty);
 		c = tto_getchar(&dev->tty);
-		dev_unlock(&dev->tty);
 
-		dev->tty.un.s.tx_tmr = iochar_tick_cnt(150, &error);   /* Timeout 150ms */
-		if (error > TICKSIZE_ERR_TOLERANCE) {
-			slogf (_SLOG_SETCODE (_SLOGC_CHAR, 0), _SLOG_WARNING,
-					"%s: %s TX timer deviation = %u ms", __func__, dev->tty.name, error);
-		}
-
+		dev->tty.un.s.tx_tmr = 2;		/* Timeout 3 */
 		write_pl011(dev, PL011_DR, c);
 		/* Clear the OSW_PAGED_OVERRIDE flag as we only want
 		 * one character to be transmitted in this case.
@@ -285,11 +260,12 @@ tto(TTYDEV *ttydev, int action, int arg1)
 			write_pl011(dev, PL011_IMSC, dev->imr);
 		}
 	}
+	dev_unlock(&dev->tty);
 #ifdef MDEBUG
 	TraceEvent(_NTO_TRACE_INSERTSUSEREVENT, 231, bytes, bup->cnt);
 #endif
 
-	/* Check client lists for notify conditions */
+   /* Check client lists for notify conditions */
 	return (tto_checkclients(&dev->tty));
 }
 
@@ -395,7 +371,7 @@ void ser_stty(DEV_PL011 *dev)
 			dev->tinfo_rx.xfer_bytes= dev->dma_xfer_size;
 			if(dev->dmafuncs.setup_xfer (dev->dma_chn_rx, &dev->tinfo_rx)==-1){
 				printf("setup rx dma failed, errno %d\n", errno);
-			}
+			}		
 			trigger |= 0x2<<3; /* 4 byte trigger */
 			dma_en |= PL011_DMACR_RXE;
 			dev->dmafuncs.xfer_start(dev->dma_chn_rx);
@@ -444,6 +420,14 @@ int drain_check(TTYDEV *ttydev, uintptr_t *count) {
 	// out the shift register.  We do this dynamically since the
 	// baud rate can change.
 	if (count != NULL)
-		*count = (ttydev->baud == 0) ? 0 : ((IO_CHAR_DEFAULT_BITSIZE * 20) / ttydev->baud) + 1;
+		*count = (ttydev->baud == 0) ? 0 : ((IO_CHAR_DEFAULT_BITSIZE * 20) / ttydev->baud) + 1;	
 	return 0;
 }
+
+
+
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/devc/serpl011/tto.c $ $Rev: 933278 $")
+#endif

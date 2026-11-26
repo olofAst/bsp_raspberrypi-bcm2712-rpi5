@@ -1,25 +1,4 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC:
  * Copyright 2007, 2008, QNX Software Systems.
  *
@@ -45,13 +24,14 @@
 #include <string.h>
 
 #include <hw/sysinfo.h>
-#include <drvr/hwinfo.h>
 
 #include <internal.h>
 
 // Module:  scan hwi for devices
 
 #ifdef SDIO_SOC_SUPPORT
+
+extern unsigned hwi_find_bus(const char *name, unsigned unit);
 
 static unsigned sdio_soc_hwi( int idx )
 {
@@ -71,7 +51,7 @@ static int sdio_soc_config( sdio_hc_t *hc, int idx, unsigned offset )
 
 	while( ( offset = hwi_next_tag( offset, 1 ) ) != HWI_NULL_OFF ) {
 		tag		= hwi_off2tag( offset );
-		name	= __hwi_find_string( tag->prefix.name );
+		name	= __hwi_find_string( ((hwi_tag *)tag)->prefix.name );
 
 		if( !strcmp( name, HWI_TAG_NAME_busattr ) ) {
 			cfg->bus_width = tag->busattr.width;
@@ -91,16 +71,10 @@ static int sdio_soc_config( sdio_hc_t *hc, int idx, unsigned offset )
 			strlcpy( cfg->name, __hwi_find_string( tag->dll.name ), sizeof( cfg->name ) );
 		}
 		else if( !strcmp( name, HWI_TAG_NAME_optstr ) ) {
-			if( opts ) {
-				free( opts );
-			}
 			opts = strdup( __hwi_find_string( tag->optstr.string ) );
 		}
 		else if( !strcmp( name, HWI_TAG_NAME_dma ) ) {
 			cfg->dma_chnl[cfg->dma_chnls++] = tag->dma.chnl;
-		}
-		else {
-			// nothing
 		}
 	}
 
@@ -117,7 +91,7 @@ static int sdio_soc_config( sdio_hc_t *hc, int idx, unsigned offset )
 	return( EOK );
 }
 
-int sdio_soc_scan( void )
+int sdio_soc_scan( )
 {
 	sdio_hc_t	*hc;
 	unsigned	item;
@@ -126,16 +100,9 @@ int sdio_soc_scan( void )
 	item		= HWI_NULL_OFF; 
 	occurence	= 0;
 	hc			= TAILQ_FIRST( &sdio_ctrl.hlist );
-	while( 1 ) {
-		item = sdio_soc_hwi( occurence );
-		if( item == HWI_NULL_OFF ) {
-			break;
-		}
-		if( hc == NULL ) {
-			hc = sdio_hc_alloc( );
-			if( hc == NULL ) {
-				return( ENOMEM );
-			}
+	while( ( item = sdio_soc_hwi( occurence ) ) != HWI_NULL_OFF ) {
+		if( hc == NULL && ( hc = sdio_hc_alloc( ) ) == NULL ) {
+			return( ENOMEM );
 		}
 		if( sdio_soc_config( hc, occurence, item ) != EOK ) {
 			sdio_hc_free( hc );
@@ -164,18 +131,20 @@ int sdio_soc_device( sdio_hc_t *hc )
 	cfg		= &hc->cfg;
 	status	= EOK;
 
-	if( ( cfg->name[0] == '\0' ) && cfg->base_addrs ) {
+	if( cfg->name[0] == '\0' && cfg->base_addrs ) {
 		return( ENODEV );
 	}
 
-	if( cfg->idx != -1 ) {
-		item = sdio_soc_hwi( cfg->idx );
-		if( item != HWI_NULL_OFF ) {
-			status = sdio_soc_config( hc, cfg->idx, item );
-		}
+	if( cfg->idx != -1 && ( item = sdio_soc_hwi( cfg->idx ) ) != HWI_NULL_OFF ) {
+		status = sdio_soc_config( hc, cfg->idx, item );
 	}
 
 	return( status );
 }
 
+#endif
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/devb/sdmmc/sdiodi/soc.c $ $Rev: 896546 $")
 #endif

@@ -1,40 +1,20 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
- * Copyright 2015,2022,2023 BlackBerry Limited.
- *
- * Licensed under the Apache License, Version 2.0 (the "License"). You
- * may not reproduce, modify or distribute this software except in
- * compliance with the License. You may obtain a copy of the License
- * at: http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" basis,
+ * $QNXLicenseC:
+ * Copyright 2015, QNX Software Systems. 
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License"). You 
+ * may not reproduce, modify or distribute this software except in 
+ * compliance with the License. You may obtain a copy of the License 
+ * at: http://www.apache.org/licenses/LICENSE-2.0 
+ * 
+ * Unless required by applicable law or agreed to in writing, software 
+ * distributed under the License is distributed on an "AS IS" basis, 
  * WITHOUT WARRANTIES OF ANY KIND, either express or implied.
  *
- * This file may contain contributions from others, either as
- * contributors under the License or as licensors under other terms.
- * Please review this entire file for other proprietary rights or license
- * notices, as well as the QNX Development Suite License Guide at
+ * This file may contain contributions from others, either as 
+ * contributors under the License or as licensors under other terms.  
+ * Please review this entire file for other proprietary rights or license 
+ * notices, as well as the QNX Development Suite License Guide at 
  * http://licensing.qnx.com/license-guide/ for other information.
  * $
  */
@@ -66,7 +46,7 @@
 	#define EFIAPI
 #endif
 
-#if defined(__x86_64__) || defined(__aarch64__)
+#if defined(__x86_64__)
 	#define EFIERR(a)                   (0x8000000000000000 | a)
 #else
 	#define EFIERR(a)                   (0x80000000 | a)
@@ -334,39 +314,9 @@ typedef struct {
 			.Data4 = \
 			{ \
 				[0] = 0x9a, [1] = 0x16, [2] = 0x0, [3] = 0x90, \
-				[4] = 0x27, [5] = 0x3f, [6] = 0xc1, [7] = 0x4d, \
+				[4] = 0x27,[5] = 0x3f, [6] = 0xc1, [7] = 0x4d, \
 			}, \
 		}
-
-#define SMBIOS_TABLE_GUID \
-		{ \
-			.Data1 = 0xeb9d2d31, .Data2 = 0x2d88, .Data3 = 0x11d3, \
-			.Data4 = \
-			{ \
-				[0] = 0x9a, [1] = 0x16, [2] = 0x0, [3] = 0x90, \
-				[4] = 0x27, [5] = 0x3f, [6] = 0xc1, [7] = 0x4d, \
-			}, \
-		}
-
-#define SMBIOS_3_TABLE_GUID \
-		{ \
-			.Data1 = 0xf2fd1544, .Data2 = 0x9794, .Data3 = 0x4a2c, \
-			.Data4 = \
-			{ \
-				[0] = 0x99, [1] = 0x2e, [2] = 0xe5, [3] = 0xbb, \
-				[4] = 0xcf, [5] = 0x20, [6] = 0xe3, [7] = 0x94, \
-			}, \
-		}
-
-#define LOADED_IMAGE_PROTO_GUID \
-        { \
-            .Data1 = 0x5b1b31a1, .Data2 = 0x9562, .Data3 = 0x11d2, \
-            .Data4 = \
-            { \
-                [0] = 0x8e, [1] = 0x3f, [2] = 0x00, [3] = 0xa0, \
-                [4] = 0xc9, [5] = 0x69, [6] = 0x72, [7] = 0x3b  \
-            } \
-        }
 
 typedef struct {
 	EFI_GUID			VendorGuid;
@@ -452,24 +402,6 @@ typedef struct {
 	EFI_CONFIGURATION_TABLE			*ConfigurationTable;
 } EFI_SYSTEM_TABLE;
 
-typedef EFI_STATUS (*EFI_IMAGE_UNLOAD)(EFI_HANDLE ImageHandle);
-
-typedef struct {
-    _Uint32t            Revision;
-    EFI_HANDLE          ParentHandle;
-    EFI_SYSTEM_TABLE    *SystemTable;
-    EFI_HANDLE          DeviceHandle;
-    EFI_DEVICE_PATH     *FilePath;
-    void                *Reserved;
-    _Uint32t            LoadOptionsSize;
-    void                *LoadOptions;
-    void                *ImageBase;
-    _Uint64t            ImageSize;
-    EFI_MEMORY_TYPE     ImageCodeType;
-    EFI_MEMORY_TYPE     ImageDataType;
-    EFI_IMAGE_UNLOAD    Unload;
-} EFI_LOADED_IMAGE_PROTOCOL;
-
 /*
  * EFI Image Handle (QNX startup image)
  */
@@ -506,13 +438,11 @@ static inline void uefi_exit_boot_services(void)
 	if (uefi_exit_boot_services_f != NULL) uefi_exit_boot_services_f();
 }
 
-extern EFI_STATUS efi_entry_point(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable);
-EFI_MEMORY_DESCRIPTOR *efi_walk_map(EFI_MEMORY_DESCRIPTOR *previous);
-void *efi_get_table(const EFI_GUID *guid);
-void init_raminfo_efi(void);
-char *efi_convert_command_line(void);
-void efi_tweak_cmdline(struct bootargs_entry *bap);
-
 #endif
 
-/* __SRCVERSION("acpi.h $Rev: 974790 $"); */
+/* __SRCVERSION("acpi.h $Rev: 916338 $"); */
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/startup/lib/public/hw/uefi.h $ $Rev: 916338 $")
+#endif

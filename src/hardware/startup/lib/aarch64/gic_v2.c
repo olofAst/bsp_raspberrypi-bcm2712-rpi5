@@ -1,25 +1,4 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC:
  * Copyright 2014-2020, QNX Software Systems.
  *
@@ -40,41 +19,28 @@
  * $
  */
 
-#include <startup.h>
+#include "startup.h"
 #include <aarch64/gic_v2.h>
 
 /*
  * GICv2 support code
  */
 
-static struct startup_intrinfo gic_v2_ppi = {
+static struct startup_intrinfo gic_v2_intr = {
     .vector_base      = _NTO_INTR_CLASS_EXTERNAL,
     .num_vectors      = 0,
     .cascade_vector   = _NTO_INTR_SPARE,
     .cpu_intr_base    = 0,
     .cpu_intr_stride  = 0,
     .flags            = 0,
-    .id  = { 0, 0, &interrupt_id_gic_v2_ppi},
+    .id  = { 0, 0, &interrupt_id_gic_v2},
     .eoi = { 0, 0, &interrupt_eoi_gic_v2},
-    .mask             = &interrupt_mask_gic_v2_ppi,
-    .unmask           = &interrupt_unmask_gic_v2_ppi,
-    .config           = &interrupt_config_gic_v2_ppi,
+    .mask             = &interrupt_mask_gic_v2,
+    .unmask           = &interrupt_unmask_gic_v2,
+    .config           = &interrupt_config_gic_v2,
+#ifdef INTR_CONFIG_FLAG_SYS // we can remove this after the new header are propagated
     .local_stride	 = 0x8000
-};
-
-static struct startup_intrinfo gic_v2_spi = {
-    .vector_base      = _NTO_INTR_CLASS_EXTERNAL + 32U,
-    .num_vectors      = 0,
-    .cascade_vector   = _NTO_INTR_SPARE,
-    .cpu_intr_base    = 0,
-    .cpu_intr_stride  = 0,
-    .flags            = 0,
-    .id  = { 0, 0, &interrupt_id_gic_v2_spi},
-    .eoi = { 0, 0, &interrupt_eoi_gic_v2},
-    .mask             = &interrupt_mask_gic_v2_spi,
-    .unmask           = &interrupt_unmask_gic_v2_spi,
-    .config           = NULL,
-    .local_stride	 = 0,
+#endif
 };
 
 static unsigned
@@ -146,13 +112,12 @@ gic_v2_init(paddr_t gicd, paddr_t gicc)
 
 	unsigned const off = as_find(AS_NULL_OFF, "memory", NULL);
 	as_add64(gicd, gicd + 0xfffu, AS_ATTR_DEV, "gicd", off);
-	as_add64(gicc, gicc + 0x1fffu, AS_ATTR_DEV, "gicc", off);
+	as_add64(gicc, gicc + 0xfffu, AS_ATTR_DEV, "gicc", off);
 
 	gic_gicd = gicd;
 	gic_gicc = gicc;
 	gic_cpu_init = gic_v2_gicc_init;
 	gic_sendipi = &sendipi_gic_v2;
-
 
 	gic_gicd_vaddr = callout_io_map(0x1000, gicd);
 	gic_gicc_vaddr = callout_io_map(0x2000, gicc);
@@ -174,11 +139,8 @@ gic_v2_init(paddr_t gicd, paddr_t gicc)
 	/*
 	 * Calculate number of interrupt lines.
 	 */
-	 gic_v2_ppi.num_vectors = 32U; // always 32
-
 	itn = ((in32(gicd + ARM_GICD_TYPER) & ARM_GICD_TYPER_ITLN) + 1) * 32;
-	gic_v2_spi.num_vectors = min(1020, itn) - gic_v2_ppi.num_vectors;
-	unsigned const last_spi = gic_v2_ppi.num_vectors + gic_v2_spi.num_vectors;
+	gic_v2_intr.num_vectors = min(1020, itn);
 
 	if (debug_flag) {
 		kprintf("GICv2: %d interrupts\n", itn);
@@ -195,8 +157,7 @@ gic_v2_init(paddr_t gicd, paddr_t gicc)
 	/*
 	 * Set default priority of all SPI interrupts to 0xa0
 	 */
-	 // XXX shouldn't i start at 32 ?
-	for (i = 8; i < last_spi; i += 4) {
+	for (i = 8; i < gic_v2_intr.num_vectors; i += 4) {
 		out32(gicd + ARM_GICD_IPRIORITYn + i, 0xa0a0a0a0);
 	}
 
@@ -206,7 +167,7 @@ gic_v2_init(paddr_t gicd, paddr_t gicc)
 	if (debug_flag) {
 		kprintf("GICv2: routing SPIs to gic cpu %d\n", gic_cpu);
 	}
-	for (i = 32; i < last_spi; i += 4) {
+	for (i = 32; i < gic_v2_intr.num_vectors; i += 4) {
 		out32(gicd + ARM_GICD_ITARGETSRn + i, (0x01010101u << gic_cpu));
 	}
 
@@ -225,8 +186,7 @@ gic_v2_init(paddr_t gicd, paddr_t gicc)
 	/*
 	 * Add the interrupt callouts
 	 */
-	add_interrupt(&gic_v2_ppi);
-	add_interrupt(&gic_v2_spi);
+	add_interrupt(&gic_v2_intr);
 }
 
 /* Get number of GIC SPIs */
@@ -270,3 +230,8 @@ gic_v2_set_intr_trig_mode(int irq, int edge)
 		}
 	}
 }
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/startup/lib/aarch64/gic_v2.c $ $Rev: 939646 $")
+#endif

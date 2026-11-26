@@ -1,27 +1,6 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC:
- * Copyright 2020, QNX Software Systems.
+ * Copyright 2025 QNX Software Systems.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"). You
  * may not reproduce, modify or distribute this software except in
@@ -40,8 +19,12 @@
  * $
  */
 
-#include <startup.h>
+#include "startup.h"
 
+/*
+ * Cortex-A76 (Raspberry Pi 5 / BCM2712).
+ * Not part of the stock SDP 7.1 startup library; added for the rpi5 port.
+ */
 static void
 a76_setup(void)
 {

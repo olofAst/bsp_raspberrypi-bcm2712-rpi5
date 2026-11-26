@@ -1,25 +1,4 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC:
  * Copyright 2008, QNX Software Systems.
  *
@@ -44,7 +23,7 @@
 
 
 
-#include <startup.h>
+#include "startup.h"
 
 #ifndef SUPPORT_CMP_ZLIB
 	#define	SUPPORT_CMP_ZLIB 0
@@ -90,3 +69,8 @@ uncompress(int type, PADDR_T dst_paddr, PADDR_T src_paddr) {
 	}
 	startup_memory_unmap(src);
 }
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/startup/lib/uncompress.c $ $Rev: 892924 $")
+#endif

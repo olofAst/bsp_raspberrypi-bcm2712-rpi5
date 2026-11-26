@@ -1,27 +1,6 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC:
- * Copyright (c) 2007,2008,2024, BlackBerry Limited. All rights reserved.
+ * Copyright 2007, 2008, QNX Software Systems.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"). You
  * may not reproduce, modify or distribute this software except in
@@ -44,10 +23,12 @@
 #include <atomic.h>
 #include <string.h>
 #include <malloc.h>
-#include <internal.h>
-#include <gulliver.h>
 
-static int _sdio_synchronize( struct sdio_device * const device, int const io, int const ncmds )
+#include <internal.h>
+
+extern sdio_ctrl_t				sdio_ctrl;
+
+static int _sdio_synchronize( struct sdio_device *device, int io, int ncmds )
 {
 	pthread_mutex_lock( &sdio_ctrl.mutex );
 	if( !io ) {
@@ -66,7 +47,7 @@ static int _sdio_synchronize( struct sdio_device * const device, int const io, i
 	}
 	else {
 		device->usage += ncmds;		// Note:  add since ncmds is negative
-		if( ( device->usage == 0 ) && ( device->flags & DEV_FLAG_RMV_PENDING ) ) {
+		if( device->usage == 0 && ( device->flags & DEV_FLAG_RMV_PENDING ) ) {
 			pthread_cond_signal( &sdio_ctrl.cd_cond );
 		}
 	}
@@ -74,7 +55,8 @@ static int _sdio_synchronize( struct sdio_device * const device, int const io, i
 	return( EOK );
 }
 
-struct sdio_device *sdio_device_lookup( struct sdio_connection * const connection, sdio_device_instance_t * const instance )
+struct sdio_device *sdio_device_lookup( struct sdio_connection *connection,
+		sdio_device_instance_t *instance )
 {
 	struct sdio_device		*device;
 
@@ -90,52 +72,52 @@ struct sdio_device *sdio_device_lookup( struct sdio_connection * const connectio
 	return( device );
 }
 
-void *sdio_client_hdl( struct sdio_device * const device )
+void *sdio_client_hdl( struct sdio_device *device )
 {
 	return( device->user );
 }
 
-void *sdio_bs_hdl( struct sdio_device * const device )
+void *sdio_bs_hdl( struct sdio_device *device )
 {
 	return( device->dev->hc->bs_hdl );
 }
 
-sdio_cid_t *sdio_get_cid( struct sdio_device * const device )
+sdio_cid_t *sdio_get_cid( struct sdio_device *device )
 {
 	return( &device->dev->cid );
 }
 
-void *sdio_get_raw_cid( struct sdio_device * const device )
+void *sdio_get_raw_cid( struct sdio_device *device )
 {
 	return( &device->dev->raw_cid );
 }
 
-sdio_csd_t *sdio_get_csd( struct sdio_device * const device )
+sdio_csd_t *sdio_get_csd( struct sdio_device *device )
 {
 	return( &device->dev->csd );
 }
 
-void *sdio_get_raw_csd( struct sdio_device * const device )
+void *sdio_get_raw_csd( struct sdio_device *device )
 {
 	return( &device->dev->raw_csd );
 }
 
-sdio_ecsd_t *sdio_get_ecsd( struct sdio_device * const device )
+sdio_ecsd_t *sdio_get_ecsd( struct sdio_device *device )
 {
 	return( &device->dev->ecsd );
 }
 
-void *sdio_get_raw_ecsd( struct sdio_device * const device )
+void *sdio_get_raw_ecsd( struct sdio_device *device )
 {
 	return( &device->dev->raw_ecsd );
 }
 
-void *sdio_get_raw_scr( struct sdio_device * const device )
+void *sdio_get_raw_scr( struct sdio_device *device )
 {
 	return( &device->dev->raw_scr );
 }
 
-int sdio_verbosity( struct sdio_device * const device, uint32_t const flags, int const verbosity )
+int sdio_verbosity( struct sdio_device *device, int flags, int verbosity )
 {
 	sdio_hc_t		*hc;
 
@@ -145,7 +127,7 @@ int sdio_verbosity( struct sdio_device * const device, uint32_t const flags, int
 	return( EOK );
 }
 
-struct sdio_cmd *sdio_alloc_cmd( void )
+struct sdio_cmd *sdio_alloc_cmd( )
 {
 	struct sdio_cmd		*cmd;
 
@@ -168,7 +150,7 @@ void sdio_free_cmd( struct sdio_cmd *cmd )
 	pthread_mutex_unlock( &sdio_ctrl.mutex );
 }
 
-int	sdio_cmd_status( const struct sdio_cmd * const cmd, uint32_t *status, uint32_t * const rsp )
+int	sdio_cmd_status( struct sdio_cmd *cmd, uint32_t *status, uint32_t *rsp )
 {
 	if( status ) {
 		*status = cmd->status;
@@ -181,7 +163,7 @@ int	sdio_cmd_status( const struct sdio_cmd * const cmd, uint32_t *status, uint32
 	return( EOK );
 }
 
-int sdio_setup_cmd_ext( struct sdio_cmd *cmd, uint32_t const flgs, uint32_t const op, uint32_t const arg, uint32_t const earg )
+int sdio_setup_cmd_ext( struct sdio_cmd *cmd, uint32_t flgs, uint32_t op, uint32_t arg, uint32_t earg )
 {
 	cmd->opcode		= op;
 	cmd->arg		= arg;
@@ -191,12 +173,12 @@ int sdio_setup_cmd_ext( struct sdio_cmd *cmd, uint32_t const flgs, uint32_t cons
 	return( EOK );
 }
 
-int sdio_setup_cmd( struct sdio_cmd * const cmd, uint32_t const flgs, uint32_t const op, uint32_t const arg )
+int sdio_setup_cmd( struct sdio_cmd *cmd, uint32_t flgs, uint32_t op, uint32_t arg )
 {
 	return( sdio_setup_cmd_ext( cmd, flgs, op, arg, 0 ) );
 }
 
-int sdio_setup_cmd_io( struct sdio_cmd *cmd, uint32_t const flgs, uint32_t const blks, uint32_t const blksz, void * const sgl, uint32_t const sgc, void * const mhdl )
+int sdio_setup_cmd_io( struct sdio_cmd *cmd, uint32_t flgs, int blks, int blksz, void *sgl, int sgc, void *mhdl )
 {
 	cmd->mhdl		= mhdl;
 	cmd->flags		|= flgs;
@@ -208,14 +190,13 @@ int sdio_setup_cmd_io( struct sdio_cmd *cmd, uint32_t const flgs, uint32_t const
 	return( EOK );
 }
 
-int sdio_send_cmd( struct sdio_device * const device, struct sdio_cmd * const cmd,
+int sdio_send_cmd( struct sdio_device *device, struct sdio_cmd *cmd,
 		void (*func)( struct sdio_device *, struct sdio_cmd *, void *),
-		uint32_t const timeout, int const retries )
+		uint32_t timeout, int retries )
 {
 	int				status;
 
-	status = _sdio_synchronize( device, !0, 1 );
-	if( status != EOK ) {
+	if( ( status = _sdio_synchronize( device, !0, 1 ) ) != EOK ) {
 		return( status );
 	}
 
@@ -226,12 +207,11 @@ int sdio_send_cmd( struct sdio_device * const device, struct sdio_cmd * const cm
 	return( status );
 }
 
-int sdio_stop_transmission( struct sdio_device * const device, int const hpi )
+int sdio_stop_transmission( struct sdio_device *device, int hpi )
 {
 	int				status;
 
-	status = _sdio_synchronize( device, !0, 1 );
-	if( status != EOK ) {
+	if( ( status = _sdio_synchronize( device, !0, 1 ) ) != EOK ) {
 		return( status );
 	}
 
@@ -242,15 +222,14 @@ int sdio_stop_transmission( struct sdio_device * const device, int const hpi )
 	return( status );
 }
 
-int sdio_set_partition( struct sdio_device * const device, uint32_t const partition )
+int sdio_set_partition( struct sdio_device *device, uint32_t partition )
 {
 	sdio_dev_t	*dev;
 	int			status;
 
 	dev = device->dev;
 
-	status = _sdio_synchronize( device, !0, 1 );
-	if( status != EOK ) {
+	if( ( status = _sdio_synchronize( device, !0, 1 ) ) != EOK ) {
 		return( status );
 	}
 
@@ -261,12 +240,11 @@ int sdio_set_partition( struct sdio_device * const device, uint32_t const partit
 	return( status );
 }
 
-int sdio_set_block_count( struct sdio_device * const device, uint32_t const blkcnt, uint32_t const flgs )
+int sdio_set_block_count( struct sdio_device *device, int blkcnt, uint32_t flgs )
 {
 	int				status;
 
-	status = _sdio_synchronize( device, !0, 1 );
-	if( status != EOK ) {
+	if( ( status = _sdio_synchronize( device, !0, 1 ) ) != EOK ) {
 		return( status );
 	}
 
@@ -277,12 +255,11 @@ int sdio_set_block_count( struct sdio_device * const device, uint32_t const blkc
 	return( status );
 }
 
-int sdio_set_block_length( struct sdio_device * const device, uint32_t const blklen )
+int sdio_set_block_length( struct sdio_device *device, int blklen )
 {
 	int				status;
 
-	status = _sdio_synchronize( device, !0, 1 );
-	if( status != EOK ) {
+	if( ( status = _sdio_synchronize( device, !0, 1 ) ) != EOK ) {
 		return( status );
 	}
 
@@ -293,12 +270,11 @@ int sdio_set_block_length( struct sdio_device * const device, uint32_t const blk
 	return( status );
 }
 
-int sdio_sd_switch( struct sdio_device * const device, int const mode, int const grp, uint8_t const val, uint8_t * const switch_status )
+int sdio_sd_switch( struct sdio_device *device, int mode, int grp, uint8_t val, uint8_t *switch_status )
 {
 	int				status;
 
-	status = _sdio_synchronize( device, !0, 1 );
-	if( status != EOK ) {
+	if( ( status = _sdio_synchronize( device, !0, 1 ) ) != EOK ) {
 		return( status );
 	}
 
@@ -309,12 +285,11 @@ int sdio_sd_switch( struct sdio_device * const device, int const mode, int const
 	return( status );
 }
 
-int sdio_mmc_switch( struct sdio_device * const device, uint32_t const cmdset, uint32_t const mode, uint32_t const index, uint32_t const value, uint32_t const timeout )
+int sdio_mmc_switch( struct sdio_device *device, uint32_t cmdset, uint32_t mode, uint32_t index, uint32_t value, uint32_t timeout )
 {
 	int				status;
 
-	status = _sdio_synchronize( device, !0, 1 );
-	if( status != EOK ) {
+	if( ( status = _sdio_synchronize( device, !0, 1 ) ) != EOK ) {
 		return( status );
 	}
 
@@ -325,12 +300,11 @@ int sdio_mmc_switch( struct sdio_device * const device, uint32_t const cmdset, u
 	return( status );
 }
 
-int sdio_mmc_rpmb_rw( struct sdio_device * const device, void * const pf, uint32_t const nf, uint32_t const flgs )
+int sdio_mmc_rpmb_rw( struct sdio_device *device, void *pf, int nf, int flgs )
 {
 	int				status;
 
-	status = _sdio_synchronize( device, !0, 1 );
-	if( status != EOK ) {
+	if( ( status = _sdio_synchronize( device, !0, 1 ) ) != EOK ) {
 		return( status );
 	}
 
@@ -341,12 +315,11 @@ int sdio_mmc_rpmb_rw( struct sdio_device * const device, void * const pf, uint32
 	return( status );
 }
 
-int sdio_mmc_gen_man( struct sdio_device * const device, uint8_t const op, void * const buf, uint32_t const blklen, uint32_t const blkcnt, uint32_t const arg, uint32_t const flgs)
+int sdio_mmc_gen_man( struct sdio_device *device, uint8_t op, void *buf, int blklen, int blkcnt, uint32_t arg, uint32_t flgs)
 {
 	int				status;
 
-	status = _sdio_synchronize( device, !0, 1 );
-	if( status != EOK ) {
+	if( ( status = _sdio_synchronize( device, !0, 1 ) ) != EOK ) {
 		return( status );
 	}
 
@@ -357,12 +330,11 @@ int sdio_mmc_gen_man( struct sdio_device * const device, uint8_t const op, void 
 	return( status );
 }
 
-int sdio_send_ext_csd( struct sdio_device * const device, uint8_t * const csd )
+int sdio_send_ext_csd( struct sdio_device *device, uint8_t *csd )
 {
 	int				status;
 
-	status = _sdio_synchronize( device, !0, 1 );
-	if( status != EOK ) {
+	if( ( status = _sdio_synchronize( device, !0, 1 ) ) != EOK ) {
 		return( status );
 	}
 
@@ -373,12 +345,11 @@ int sdio_send_ext_csd( struct sdio_device * const device, uint8_t * const csd )
 	return( status );
 }
 
-int sdio_wait_card_status( struct sdio_device * const device, uint32_t * const rsp, uint32_t const mask, uint32_t const val, uint32_t const msec )
+int sdio_wait_card_status( struct sdio_device *device, uint32_t *rsp, uint32_t mask, uint32_t val, uint32_t msec )
 {
 	int				status;
 
-	status = _sdio_synchronize( device, !0, 1 );
-	if( status != EOK ) {
+	if( ( status = _sdio_synchronize( device, !0, 1 ) ) != EOK ) {
 		return( status );
 	}
 
@@ -389,12 +360,11 @@ int sdio_wait_card_status( struct sdio_device * const device, uint32_t * const r
 	return( status );
 }
 
-int sdio_send_status( struct sdio_device * const device, uint32_t * const rsp, int const hpi )
+int sdio_send_status( struct sdio_device *device, uint32_t *rsp, int hpi )
 {
 	int				status;
 
-	status = _sdio_synchronize( device, !0, 1 );
-	if( status != EOK ) {
+	if( ( status = _sdio_synchronize( device, !0, 1 ) ) != EOK ) {
 		return( status );
 	}
 
@@ -405,7 +375,7 @@ int sdio_send_status( struct sdio_device * const device, uint32_t * const rsp, i
 	return( status );
 }
 
-int sdio_retune( struct sdio_device * const device )
+int sdio_retune( struct sdio_device *device )
 {
 	sdio_hc_t	*hc;
 	int			status;
@@ -421,8 +391,7 @@ int sdio_retune( struct sdio_device * const device )
 		return( EOK );
 	}
 
-	status = _sdio_synchronize( device, !0, 1 );
-	if( status != EOK ) {
+	if( ( status = _sdio_synchronize( device, !0, 1 ) ) != EOK ) {
 		return( status );
 	}
 
@@ -433,33 +402,32 @@ int sdio_retune( struct sdio_device * const device )
 	return( status );
 }
 
-int sdio_hpi( struct sdio_device * const device, uint32_t const timeout )
+int sdio_hpi( struct sdio_device *device, uint32_t timeout )
 {
-	int			status;
-	uint32_t	rsp[4];
+   int         status;
+   uint32_t    rsp[4];
 
-	status = sdio_wait_card_status( device, rsp, CDS_READY_FOR_DATA | CDS_CUR_STATE_MSK, CDS_READY_FOR_DATA | CDS_CUR_STATE_TRAN, timeout );
-	if( status == ETIMEDOUT ) {
-		if( ( device->dev->caps & DEV_CAP_HPI_CMD12 ) ) {
-			status = sdio_stop_transmission( device, SDIO_TRUE );
-		}
-		else {
-			status = sdio_send_status( device, rsp, SDIO_TRUE );
-		}
-		if( status == EOK ) {
-			status = sdio_wait_card_status( device, rsp, CDS_READY_FOR_DATA | CDS_CUR_STATE_MSK, CDS_READY_FOR_DATA | CDS_CUR_STATE_TRAN, MMC_OUT_OF_INTERRUPT_TIMEOUT * (uint32_t)device->dev->raw_ecsd[ECSD_OUT_OF_INTERRUPT_TIME] );
-		}
-	}
-	return( status );
+   if( ( status = sdio_wait_card_status( device, rsp, CDS_READY_FOR_DATA | CDS_CUR_STATE_MSK, CDS_READY_FOR_DATA | CDS_CUR_STATE_TRAN, timeout ) ) == ETIMEDOUT ) {
+       if( ( device->dev->caps & DEV_CAP_HPI_CMD12 ) ) {
+           status = sdio_stop_transmission( device, SDIO_TRUE );
+       }
+       else {
+           status = sdio_send_status( device, rsp, SDIO_TRUE );
+       }
+       if( status == EOK ) {
+           status = sdio_wait_card_status( device, rsp, CDS_READY_FOR_DATA | CDS_CUR_STATE_MSK, CDS_READY_FOR_DATA | CDS_CUR_STATE_TRAN, MMC_OUT_OF_INTERRUPT_TIMEOUT * device->dev->raw_ecsd[ECSD_OUT_OF_INTERRUPT_TIME] );
+       }
+   }
+   return( status );
 }
 
-int sdio_hc_info( const struct sdio_device * const device, sdio_hc_info_t *info )
+int sdio_hc_info( struct sdio_device *device, sdio_hc_info_t *info )
 {
-	const sdio_hc_t		*hc;
+	sdio_hc_t		*hc;
 
 	hc					= device->dev->hc;
 
-	info->caps			= hc->caps & 0xffffffffULL;
+	info->caps			= hc->caps & 0xffffffff;
 	info->sg_max		= hc->cfg.sg_max;
 	info->dtr_max		= hc->clk_max;
 	info->dtr			= hc->clk;
@@ -472,13 +440,13 @@ int sdio_hc_info( const struct sdio_device * const device, sdio_hc_info_t *info 
 	return( EOK );
 }
 
-int sdio_dev_info( const struct sdio_device * const device, sdio_dev_info_t *info )
+int sdio_dev_info( struct sdio_device *device, sdio_dev_info_t *info )
 {
-	const sdio_hc_t			*hc;
-	const sdio_dev_t		*dev;
-	const sdio_cid_t		*cid;
-	const sdio_csd_t		*csd;
-	const sdio_ecsd_t		*ecsd;
+	sdio_hc_t		*hc;
+	sdio_dev_t		*dev;
+	sdio_cid_t		*cid;
+	sdio_csd_t		*csd;
+	sdio_ecsd_t		*ecsd;
 
 	dev				= device->dev;
 	hc				= dev->hc;
@@ -515,7 +483,7 @@ int sdio_dev_info( const struct sdio_device * const device, sdio_dev_info_t *inf
 	info->super_page_size		= SDIO_BLKSZ_4K;
 
 	if( dev->dtype == DEV_TYPE_MMC ) {
-		if( ( csd->spec_vers >= CSD_SPEC_VER_4 ) && ecsd->sectors ) {
+		if( csd->spec_vers >= CSD_SPEC_VER_4 && ecsd->sectors ) {
 			info->sectors			= ecsd->sectors;
 			info->sector_size		= ecsd->blksz;
 			info->super_page_size	= ecsd->acc_size;
@@ -532,8 +500,6 @@ int sdio_dev_info( const struct sdio_device * const device, sdio_dev_info_t *inf
 	info->wp_size				= dev->wp_size;
 	info->erase_size			= dev->erase_size;
 
-	info->rel_wr_sec_c			= dev->rel_wr_sec_c;
-
 	info->optimal_trim_size		= info->super_page_size;
 	info->optimal_read_size		= info->super_page_size;
 	info->optimal_write_size	= info->super_page_size;
@@ -545,50 +511,22 @@ int sdio_dev_info( const struct sdio_device * const device, sdio_dev_info_t *inf
 	return( EOK );
 }
 
-int sdio_cache( struct sdio_device * const device, int const op, uint32_t const timeout )
+int sdio_cache( struct sdio_device *device, int op, uint32_t timeout )
 {
 	sdio_dev_t	*dev;
 	int			status;
 
 	dev = device->dev;
 
-	if( !( dev->caps & DEV_CAP_CACHE ) ) {
-		return( ENOTSUP );
-	}
-
-	status = _sdio_synchronize( device, !0, 1 );
-	if( status != EOK ) {
-		return( status );
-	}
-
-	status = _sdio_cache( dev, op, timeout );
-
-	_sdio_synchronize( device, !0, -1 );
-
-	return( status );
-}
-
-int sdio_pwroff_notify( struct sdio_device * const device, int const op, int const timeout )
-{
-	sdio_dev_t	*dev;
-	int			status;
-
-	dev = device->dev;
-
-	if( !( dev->caps & DEV_CAP_PWROFF_NOTIFY ) ) {
-		return( EOK );
-	}
-
-	status = _sdio_synchronize( device, !0, 1 );
-	if( status != EOK ) {
+	if( ( status = _sdio_synchronize( device, !0, 1 ) ) != EOK ) {
 		return( status );
 	}
 
 	if( ( dev->dtype == DEV_TYPE_MMC ) ) {
-		status = mmc_pwroff_notify( dev, op, timeout );
+		status = mmc_cache( dev, op, timeout );
 	}
 	else {
-		status = sd_pwroff_notify( dev, op, timeout );
+		status = EINVAL;
 	}
 
 	_sdio_synchronize( device, !0, -1 );
@@ -596,15 +534,14 @@ int sdio_pwroff_notify( struct sdio_device * const device, int const op, int con
 	return( status );
 }
 
-int sdio_erase( struct sdio_device * const device, uint32_t const partition, uint32_t const flgs, uint64_t const lba, uint32_t const nlba )
+int sdio_erase( struct sdio_device *device, int partition, int flgs, uint64_t lba, int nlba )
 {
 	sdio_dev_t	*dev;
 	int			status;
 
 	dev = device->dev;
 
-	status = _sdio_synchronize( device, !0, 1 );
-	if( status != EOK ) {
+	if( ( status = _sdio_synchronize( device, !0, 1 ) ) != EOK ) {
 		return( status );
 	}
 
@@ -620,15 +557,14 @@ int sdio_erase( struct sdio_device * const device, uint32_t const partition, uin
 	return( status );
 }
 
-int sdio_lock_unlock( struct sdio_device * const device, int const action, uint8_t * const pwd, uint32_t const pwd_len )
+int sdio_lock_unlock( struct sdio_device *device, int action, uint8_t *pwd, int pwd_len )
 {
 	sdio_dev_t	*dev;
 	int			status;
 
 	dev = device->dev;
 
-	status = _sdio_synchronize( device, !0, 1 );
-	if( status != EOK ) {
+	if( ( status = _sdio_synchronize( device, !0, 1 ) ) != EOK ) {
 		return( status );
 	}
 
@@ -644,12 +580,11 @@ int sdio_lock_unlock( struct sdio_device * const device, int const action, uint8
 	return( status );
 }
 
-int sdio_bus_error( struct sdio_device * const device )
+int sdio_bus_error( struct sdio_device *device )
 {
 	int				status;
 
-	status = _sdio_synchronize( device, !0, 1 );
-	if( status != EOK ) {
+	if( ( status = _sdio_synchronize( device, !0, 1 ) ) != EOK ) {
 		return( status );
 	}
 
@@ -660,15 +595,14 @@ int sdio_bus_error( struct sdio_device * const device )
 	return( status );
 }
 
-int sdio_reset( struct sdio_device * const device )
+int sdio_reset( struct sdio_device *device )
 {
 	sdio_dev_t		*dev;
 	int				status;
 
 	dev		= device->dev;
 
-	status = _sdio_synchronize( device, !0, 1 );
-	if( status != EOK ) {
+	if( ( status = _sdio_synchronize( device, !0, 1 ) ) != EOK ) {
 		return( status );
 	}
 
@@ -679,12 +613,11 @@ int sdio_reset( struct sdio_device * const device )
 	return( status );
 }
 
-int sdio_idle( struct sdio_device * const device )
+int sdio_idle( struct sdio_device *device )
 {
 	int		status;
 
-	status = _sdio_synchronize( device, !0, 1 );
-	if( status != EOK ) {
+	if( ( status = _sdio_synchronize( device, !0, 1 ) ) != EOK ) {
 		return( status );
 	}
 
@@ -695,12 +628,11 @@ int sdio_idle( struct sdio_device * const device )
 	return( status );
 }
 
-int sdio_pwrmgnt( struct sdio_device * const device, uint32_t const action )
+int sdio_pwrmgnt( struct sdio_device *device, int action )
 {
 	int		status;
 
-	status = _sdio_synchronize( device, !0, 1 );
-	if( status != EOK ) {
+	if( ( status = _sdio_synchronize( device, !0, 1 ) ) != EOK ) {
 		return( status );
 	}
 
@@ -711,7 +643,7 @@ int sdio_pwrmgnt( struct sdio_device * const device, uint32_t const action )
 	return( status );
 }
 
-int sdio_detach( struct sdio_device * const device )
+int sdio_detach( struct sdio_device *device )
 {
 	if( device->usage ) {
 		return( EBUSY );
@@ -726,10 +658,10 @@ int sdio_detach( struct sdio_device * const device )
 	return( EOK );
 }
 
-int sdio_attach( const struct sdio_connection * const connection,
+int sdio_attach( struct sdio_connection *connection,
 					sdio_device_instance_t *instance,
 					struct sdio_device **hdl,
-					void * const client_hdl )
+					void *client_hdl )
 {
 	sdio_hc_t				*hc;
 	struct sdio_device		*device;
@@ -737,32 +669,29 @@ int sdio_attach( const struct sdio_connection * const connection,
 	device = NULL;
 	pthread_mutex_lock( &sdio_ctrl.mutex );
 	for( hc = TAILQ_FIRST( &sdio_ctrl.hlist ); hc; hc = TAILQ_NEXT( hc, hlink ) ) {
-		if( ( hc->path == instance->path ) && ( hc->device.flags & DEV_FLAG_PRESENT ) ) {
-			if( ( instance->generation == SDIO_CONNECT_WILDCARD ) ||
-					( instance->generation == hc->generation ) ) {
+		if( hc->path == instance->path && ( hc->device.flags & DEV_FLAG_PRESENT ) ) {
+			if( instance->generation == SDIO_CONNECT_WILDCARD ||
+					instance->generation == hc->generation ) {
 				break;
 			}
 		}
 	}
 
-	if( hc != NULL ) {
-		device = calloc( 1, sizeof( struct sdio_device ) );
-		if( device != NULL ) {
-			TAILQ_INSERT_TAIL( &sdio_ctrl.dlist, device, dlink );
-			instance->path			= hc->path;
-			instance->func			= 0;
-			instance->generation	= hc->generation;
-			instance->ident.vid		= 0;
-			instance->ident.did		= 0;
-			instance->ident.ccd		= 0;
-			instance->ident.dtype	= (uint16_t)hc->device.dtype;
+	if( hc && ( device = calloc( 1, sizeof( struct sdio_device ) ) ) ) {
+		TAILQ_INSERT_TAIL( &sdio_ctrl.dlist, device, dlink );
+		instance->path			= hc->path;
+		instance->func			= 0;
+		instance->generation	= hc->generation;
+		instance->ident.vid		= 0;
+		instance->ident.did		= 0;
+		instance->ident.ccd		= 0;
+		instance->ident.dtype	= hc->device.dtype;
 
-			memcpy( &device->instance, instance, sizeof( sdio_device_instance_t ) );
-			device->user	= client_hdl;
-			device->hc		= hc;
-			device->dev		= &hc->device;
-			*hdl			= device;
-		}
+		memcpy( &device->instance, instance, sizeof( sdio_device_instance_t ) );
+		device->user	= client_hdl;
+		device->hc		= hc;
+		device->dev		= &hc->device;
+		*hdl			= device;
 	}
 
 	pthread_mutex_unlock( &sdio_ctrl.mutex );
@@ -770,7 +699,7 @@ int sdio_attach( const struct sdio_connection * const connection,
 	return( device ? EOK : ENODEV );
 }
 
-int sdio_enum( struct sdio_connection *connection, int const action )
+int sdio_enum( struct sdio_connection *connection, int action )
 {
 	connection = connection;
 
@@ -789,7 +718,7 @@ int sdio_disconnect( struct sdio_connection *connection )
 	return( _sdio_disconnect( ) );
 }
 
-int sdio_connect( sdio_connect_parm_t * const parm, struct sdio_connection **connection )
+int sdio_connect( sdio_connect_parm_t *parm, struct sdio_connection **connection )
 {
 	*connection		= (void *)&sdio_ctrl;
 
@@ -797,22 +726,9 @@ int sdio_connect( sdio_connect_parm_t * const parm, struct sdio_connection **con
 
 	return( _sdio_connect( parm, connection ) );
 }
-int sdio_app_read_status( struct sdio_device* const device, uint32_t *rsp )
-{
-	int				status;
-	int				idx;
-	status = _sdio_synchronize( device, !0, 1 );
-	if( status != EOK ) {
-		return( status );
-	}
 
-	status = sd_app_sd_status( device->dev, rsp );
 
-	for( idx = 0; idx < 16; idx++ ) {
-		rsp[idx] = ENDIAN_BE32( rsp[idx] );
-	}
-
-	_sdio_synchronize( device, !0, -1 );
-
-	return( status );
-}
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/devb/sdmmc/sdiodi/card.c $ $Rev: 933186 $")
+#endif

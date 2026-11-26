@@ -1,27 +1,6 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC:
- * Copyright (c) 2007,2008,2024, BlackBerry Limited. All rights reserved.
+ * Copyright 2007, 2008, QNX Software Systems.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"). You
  * may not reproduce, modify or distribute this software except in
@@ -50,28 +29,22 @@
 
 #include <internal.h>
 
-#if 0
-static const uint32_t sd_tran_speed_fu[] = { 10000, 100000, 1000000, 10000000, 0, 0, 0, 0 };
-static const uint32_t sd_tran_speed_mf[] = { 0, 10, 12, 13, 15, 20, 25, 30,
-											35, 40, 45, 50, 55, 60, 70, 80 };
-#endif
+const uint32_t sd_tran_speed_fu[] = { 10000, 100000, 1000000, 10000000, 0, 0, 0, 0 };
+const uint32_t sd_tran_speed_mf[] = { 0, 10, 12, 13, 15, 20, 25, 30,
+										35, 40, 45, 50, 55, 60, 70, 80 };
 
-#if 0
-static const uint32_t sd_tacc_tu[] = { 1, 10, 100, 1000, 100000, 1000000, 10000000 };
-static const uint32_t sd_tacc_mf[] = { 0, 10, 12, 13, 15, 20, 25, 30,
+const uint32_t sd_tacc_tu[] = { 1, 10, 100, 1000, 100000, 1000000, 10000000 };
+const uint32_t sd_tacc_mf[] = { 0, 10, 12, 13, 15, 20, 25, 30,
 								35, 40, 45, 50, 55, 60, 70, 80 };
-#endif
 
-#if 0
-static sdio_device_errata_t sd_errata[] = {
+sdio_device_errata_t sd_errata[] = {
 		// secusmart devices require extra 50ms after ASSD selection
-	{ .pnm = "SD0", .mid = 0x27, .oid = DEV_ERRATA_WILDCARD, .prv_s = 0, .prv_e = DEV_ERRATA_WILDCARD, .erev = DEV_ERRATA_WILDCARD, .errata = 0, .rsettle = 50 },
+	{ "SD0", 0x27, DEV_ERRATA_WILDCARD, 0, DEV_ERRATA_WILDCARD, DEV_ERRATA_WILDCARD, 0, 50 },
 
-	{ .pnm = NULL, .mid = 0, .oid = 0, .prv_s = 0, .prv_e = 0, .erev = 0, .errata = 0, .rsettle = 0 }
+	{ NULL, 0, 0, 0, 0, 0, 0, 0 }
 };
-#endif
 
-static int sd_parse_cid( sdio_dev_t * const dev, sdio_cid_t *cid, uint32_t * const rsp )
+static int sd_parse_cid( sdio_dev_t *dev, sdio_cid_t *cid, uint32_t *rsp )
 {
 	int		idx;
 
@@ -81,46 +54,43 @@ static int sd_parse_cid( sdio_dev_t * const dev, sdio_cid_t *cid, uint32_t * con
 	cid->oid	= sdio_extract_bits( rsp, 128, 104, 16 );
 
 	for( idx = 0; idx < 5; idx++ ) {
-		cid->pnm[idx] = (char)sdio_extract_bits( rsp, 128, 96 - idx * 8, 8 );
+		cid->pnm[idx] = sdio_extract_bits( rsp, 128, 96 - idx * 8, 8 );
 	}
 
 	cid->psn	= sdio_extract_bits( rsp, 128, 24, 32 );
-	cid->prv	= sdio_extract_bits( rsp, 128, 56, 8 );
+	cid->prv	= sdio_extract_bits( rsp, 128, 40, 8 );
 	cid->month	= sdio_extract_bits( rsp, 128, 8, 4 );
 	cid->year	= sdio_extract_bits( rsp, 128, 12, 8 ) + 2000;
 
 	return( EOK );
 }
 
-static int sd_parse_csd( sdio_dev_t *dev, sdio_csd_t *csd, uint32_t * const rsp )
+static int sd_parse_csd( sdio_dev_t *dev, sdio_csd_t *csd, uint32_t *rsp )
 {
-	uint32_t				blksz;
-	uint32_t				csize;
-	uint32_t				csizem;
-	static const uint32_t	sd_tran_speed_fu[] = { 10000, 100000, 1000000, 10000000, 0, 0, 0, 0 };
-	static const uint32_t	sd_tran_speed_mf[] = { 0, 10, 12, 13, 15, 20, 25, 30,
-													35, 40, 45, 50, 55, 60, 70, 80 };
+	uint32_t		blksz;
+	uint32_t		csize;
+	uint32_t		csizem;
 
 	memset( csd, 0, sizeof( sdio_csd_t ) );
-	csd->csd_structure      = (uint8_t)sdio_extract_bits( rsp, 128, 126, 2 );
-	csd->taac               = (uint8_t)sdio_extract_bits( rsp, 128, 112, 8 );
-	csd->nsac               = (uint8_t)sdio_extract_bits( rsp, 128, 104, 8 );
-	csd->tran_speed         = (uint8_t)sdio_extract_bits( rsp, 128, 96, 8 );
-	csd->ccc                = (uint16_t)sdio_extract_bits( rsp, 128, 84, 12 );
-	csd->read_bl_len        = (uint8_t)sdio_extract_bits( rsp, 128, 80, 4 );
-	csd->read_bl_partial    = (uint8_t)sdio_extract_bits( rsp, 128, 79, 1 );
-	csd->write_blk_misalign = (uint8_t)sdio_extract_bits( rsp, 128, 78, 1 );
-	csd->read_blk_misalign  = (uint8_t)sdio_extract_bits( rsp, 128, 77, 1 );
-	csd->dsr_imp            = (uint8_t)sdio_extract_bits( rsp, 128, 76, 1 );
+	csd->csd_structure      = sdio_extract_bits( rsp, 128, 126, 2 );
+	csd->taac               = sdio_extract_bits( rsp, 128, 112, 8 );
+	csd->nsac               = sdio_extract_bits( rsp, 128, 104, 8 );
+	csd->tran_speed         = sdio_extract_bits( rsp, 128, 96, 8 );
+	csd->ccc                = sdio_extract_bits( rsp, 128, 84, 12 );
+	csd->read_bl_len        = sdio_extract_bits( rsp, 128, 80, 4 );
+	csd->read_bl_partial    = sdio_extract_bits( rsp, 128, 79, 1 );
+	csd->write_blk_misalign = sdio_extract_bits( rsp, 128, 78, 1 );
+	csd->read_blk_misalign  = sdio_extract_bits( rsp, 128, 77, 1 );
+	csd->dsr_imp            = sdio_extract_bits( rsp, 128, 76, 1 );
 
 	switch( csd->csd_structure ) {
 		case CSD_STRUCT_VER_10:			// Standard Capacity
 			csd->c_size			= sdio_extract_bits( rsp, 128, 62, 12 );
-			csd->vdd_r_curr_min	= (uint8_t)sdio_extract_bits( rsp, 128, 59, 3 );
-			csd->vdd_r_curr_max	= (uint8_t)sdio_extract_bits( rsp, 128, 56, 3 );
-			csd->vdd_w_curr_min	= (uint8_t)sdio_extract_bits( rsp, 128, 53, 3 );
-			csd->vdd_w_curr_max	= (uint8_t)sdio_extract_bits( rsp, 128, 50, 3 );
-			csd->c_size_mult	= (uint8_t)sdio_extract_bits( rsp, 128, 47, 3 );
+			csd->vdd_r_curr_min	= sdio_extract_bits( rsp, 128, 59, 3 );
+			csd->vdd_r_curr_max	= sdio_extract_bits( rsp, 128, 56, 3 );
+			csd->vdd_w_curr_min	= sdio_extract_bits( rsp, 128, 53, 3 );
+			csd->vdd_w_curr_max	= sdio_extract_bits( rsp, 128, 50, 3 );
+			csd->c_size_mult	= sdio_extract_bits( rsp, 128, 47, 3 );
 			blksz				= 1 << csd->read_bl_len;
 			csize				= csd->c_size + 1;
 			csizem				= 1 << ( csd->c_size_mult + 2 );
@@ -152,20 +122,20 @@ static int sd_parse_csd( sdio_dev_t *dev, sdio_csd_t *csd, uint32_t * const rsp 
 			return( EINVAL );
 	}
 
-	csd->erase_blk_en       = (uint8_t)sdio_extract_bits( rsp, 128, 46, 1 );
-	csd->sector_size        = (uint8_t)sdio_extract_bits( rsp, 128, 39, 7 );
-	csd->wp_grp_size        = (uint8_t)sdio_extract_bits( rsp, 128, 32, 7 );
-	csd->wp_grp_enable      = (uint8_t)sdio_extract_bits( rsp, 128, 31, 1 );
-	csd->r2w_factor         = (uint8_t)sdio_extract_bits( rsp, 128, 26, 3 );
-	csd->write_bl_len       = (uint8_t)sdio_extract_bits( rsp, 128, 22, 4 );
-	csd->write_bl_partial   = (uint8_t)sdio_extract_bits( rsp, 128, 21, 1 );
-//	csd->file_format_grp	= (uint8_t)sdio_extract_bits( rsp, 128, 15, 1 );
-//	csd->copy               = (uint8_t)sdio_extract_bits( rsp, 128, 14, 1 );
-	csd->write_protect		= (uint8_t)sdio_extract_bits( rsp, 128, 12, 2 );
-//	csd->file_format		= (uint8_t)sdio_extract_bits( rsp, 128, 10, 2 );
+	csd->erase_blk_en       = sdio_extract_bits( rsp, 128, 46, 1 );
+	csd->sector_size        = sdio_extract_bits( rsp, 128, 39, 7 );
+	csd->wp_grp_size        = sdio_extract_bits( rsp, 128, 32, 7 );
+	csd->wp_grp_enable      = sdio_extract_bits( rsp, 128, 31, 1 );
+	csd->r2w_factor         = sdio_extract_bits( rsp, 128, 26, 3 );
+	csd->write_bl_len       = sdio_extract_bits( rsp, 128, 22, 4 );
+	csd->write_bl_partial   = sdio_extract_bits( rsp, 128, 21, 1 );
+//	csd->file_format_grp	= sdio_extract_bits( rsp, 128, 15, 1 );
+//	csd->copy               = sdio_extract_bits( rsp, 128, 14, 1 );
+	csd->write_protect		= sdio_extract_bits( rsp, 128, 12, 2 );
+//	csd->file_format		= sdio_extract_bits( rsp, 128, 10, 2 );
 
 		// force to 512 byte block
-	if( ( blksz > SDIO_DFLT_BLKSZ ) && ( ( blksz % SDIO_DFLT_BLKSZ ) == 0 ) ) {
+	if( blksz > SDIO_DFLT_BLKSZ && ( blksz % SDIO_DFLT_BLKSZ ) == 0 ) {
 		csize = csize * ( blksz / SDIO_DFLT_BLKSZ );
 		blksz = SDIO_DFLT_BLKSZ;
 	}
@@ -186,112 +156,29 @@ static int sd_parse_scr( sdio_dev_t *dev, sd_scr_t *scr, uint32_t *rscr )
 	rscr[0] = ENDIAN_BE32( rscr[0] );
 	rscr[1] = ENDIAN_BE32( rscr[1] );
 
-	scr->scr_structure			= (uint8_t)sdio_extract_bits( rscr, 64, 60, 4 );
-	scr->sd_spec				= (uint8_t)sdio_extract_bits( rscr, 64, 56, 4 );
-	scr->data_stat_after_erase	= (uint8_t)sdio_extract_bits( rscr, 64, 55, 1 );
-	scr->sd_security			= (uint8_t)sdio_extract_bits( rscr, 64, 52, 3 );
-	scr->sd_bus_widths			= (uint8_t)sdio_extract_bits( rscr, 64, 48, 4 );
+	scr->scr_structure			= sdio_extract_bits( rscr, 64, 60, 4 );
+	scr->sd_spec				= sdio_extract_bits( rscr, 64, 56, 4 );
+	scr->data_stat_after_erase	= sdio_extract_bits( rscr, 64, 55, 1 );
+	scr->sd_security			= sdio_extract_bits( rscr, 64, 52, 3 );
+	scr->sd_bus_widths			= sdio_extract_bits( rscr, 64, 48, 4 );
 
-	scr->sd_spec3				= (uint8_t)sdio_extract_bits( rscr, 64, 47, 1 );
-	scr->ex_security			= (uint8_t)sdio_extract_bits( rscr, 64, 43, 4 );
-	scr->sd_spec4				= (uint8_t)sdio_extract_bits( rscr, 64, 42, 1 );
-	scr->sd_specx				= (uint8_t)sdio_extract_bits( rscr, 64, 38, 4 );
-	scr->cmd_support			= (uint8_t)sdio_extract_bits( rscr, 64, 32, 4 );
-
+	scr->sd_spec3				= sdio_extract_bits( rscr, 64, 47, 1 );
+	scr->ex_security			= sdio_extract_bits( rscr, 64, 43, 4 );
+	scr->cmd_support			= sdio_extract_bits( rscr, 64, 32, 2 );
 	if( ( scr->cmd_support & SCR_CMD23_SUP ) ) {
 		dev->caps				|= DEV_CAP_CMD23;
 	}
-
 	return( EOK );
 }
 
-// read, write extention register
-static int sd_rw_extr( sdio_dev_t * const dev, const int dir, const int mio, const int fno, const int mw, const uint32_t addr, const int len_msk, uint8_t * const extr )
-{
-	sdio_cmd_t		*cmd;
-	int				cc;
-	int				arg;
-	uint8_t			*ebuf;
-	int				status;
-	sdio_sge_t		sge;
-
-	cmd = sdio_alloc_cmd( );
-	if( cmd == NULL ) {
-		return( ENOMEM );
-	}
-
-	ebuf = sdio_alloc( SD_EXTR_SIZE );
-	if( ebuf == NULL ) {
-		sdio_free_cmd( cmd );
-		return( ENOMEM );
-	}
-
-	memset( ebuf, 0, SD_EXTR_SIZE );
-
-	cc = ( dir & SCF_DIR_OUT ) ? SD_WRITE_EXTR_SINGLE : SD_READ_EXTR_SINGLE;
-
-#if 0
-[31]MIO 0:Memory, 1:I/O
-[30:27] FNO
-[26] MW
-[25:9] ADDR
-[8:0] LEN/MASK mw=1 8bits, mw=0 9bits
-#endif
-
-	arg = SD_EXTR_MIO( mio );
-	arg |= SD_EXTR_FNO( fno );
-	arg |= ( SD_EXTR_MWM( mw ) );
-	arg |= ( SD_EXTR_ADDR( addr ) );
-	arg |= ( SD_EXTR_LEN_MSK( len_msk, mw ) );
-
-	sdio_setup_cmd( cmd, SCF_CTYPE_ADTC | SCF_RSP_R1, cc, arg );
-	sge.sg_count	= SD_EXTR_SIZE;
-	sge.sg_address	= SDIO_DATA_PTR_P( ebuf );
-	sdio_setup_cmd_io( cmd, dir, 1, SD_EXTR_SIZE, &sge, 1, NULL );
-
-	if( ( dir & SCF_DIR_OUT ) ) {
-		memcpy( ebuf, extr, mw ? 1 : len_msk );
-	}
-
-	status = _sdio_send_cmd( dev, cmd, NULL, SDIO_TIME_DEFAULT, 0 );
-	if( status == EOK ) {
-		if( ( dir & SCF_DIR_IN ) ) {
-			memcpy( extr, ebuf, mw ? 1 : len_msk );
-		}
-	}
-	else {
-		sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, 0, 0, "%s: Error %s %s extention register (%d) - fno %d, addr 0x%x, %s 0x%x",
-			__FUNCTION__,  ( dir & SCF_DIR_OUT ) ? "writting" : "reading", mio ? "io" : "memory", status, fno, addr,
-			mw ? "mask" : "len", len_msk );
-
-	}
-
-	sdio_free( ebuf, SD_EXTR_SIZE );
-
-	sdio_free_cmd( cmd );
-
-	return( status );
-}
-
-static int sd_extr_wr( sdio_dev_t * const dev, const uint32_t rsa, const uint32_t reg, uint8_t wval )
-{
-	return( sd_rw_extr( dev, SCF_DIR_OUT, SD_EXTR_MEM, SD_FCN_EXT_FNO( rsa ), 0, SD_FCN_EXT_SADDR( rsa ) + reg, 1, &wval ) );
-}
-
-static int sd_extr_rd( sdio_dev_t * const dev, const uint32_t rsa, const uint32_t reg, uint8_t * const rval )
-{
-	return( sd_rw_extr( dev, SCF_DIR_IN, SD_EXTR_MEM, SD_FCN_EXT_FNO( rsa ), 0, SD_FCN_EXT_SADDR( rsa ) + reg, 1, rval ) );
-}
-
-static int sdio_send_relative_addr( sdio_hc_t *hc, uint32_t *rca )
+static int sdio_send_relative_addr( sdio_hc_t *hc, int *rca )
 {
 	sdio_dev_t	*dev;
 	sdio_cmd_t	*cmd;
 	int			status;
 	int			retries;
 
-	cmd = sdio_alloc_cmd( );
-	if( cmd == NULL ) {
+	if( ( cmd = sdio_alloc_cmd( ) ) == NULL ) {
 		return( ENOMEM );
 	}
 
@@ -301,13 +188,10 @@ static int sdio_send_relative_addr( sdio_hc_t *hc, uint32_t *rca )
 
 	do {
 		sdio_setup_cmd( cmd, SCF_CTYPE_BCR | SCF_RSP_R6, SD_SEND_RELATIVE_ADDR, 0 );
-		status = _sdio_send_cmd( dev, cmd, NULL, SDIO_TIME_DEFAULT, SDIO_CMD_RETRIES );
-		if( status != EOK ) {
+		if( ( status = _sdio_send_cmd( dev, cmd, NULL, SDIO_TIME_DEFAULT, SDIO_CMD_RETRIES ) ) ) {
 			break;
 		}
-
-		*rca = cmd->rsp[0] >> 16;
-		if( *rca != 0 ) {							// wait for non-zero RCA
+		if( ( *rca = ( cmd->rsp[0] >> 16 ) ) != 0 ) {	// wait for non-zero RCA
 			break;
 		}
 	} while( retries-- );
@@ -321,107 +205,13 @@ static int sdio_send_relative_addr( sdio_hc_t *hc, uint32_t *rca )
 	return( status );
 }
 
-int sd_pwroff_notify( sdio_dev_t * const dev, const int op, int timeout )
-{
-	uint8_t		rval;
-	int			status;
-
-#if 0
-1) Host checks support bit of Power Off Notification. If POFS=1, host may use Power Off Notification.
-2) Just before host would like to shut down card power, host requests Power Off Notification to the card by setting POFN=1.
-3) Host polls Power Management Status register until the card indicates ready to power off (POFR=1).
-#endif
-
-	if( op < SDIO_POWER_OFF_SHORT ) {
-		return( EOK );
-	}
-
-	status = sd_extr_wr( dev, dev->pwr_mgnt_fcn_rsa, PWR_MGNT_SETTING, PWR_MGNT_SETTING_POFN );
-	if( status != EOK ) {
-		return( status );
-	}
-
-		// wait up to 1 second for POFR
-	for( timeout = 1000; timeout; timeout-- ) {
-		status = sd_extr_rd( dev, dev->pwr_mgnt_fcn_rsa, PWR_MGNT_STATUS, &rval );
-		if( status == EOK ) {
-			if( ( rval & PWR_MGNT_STATUS_POFR ) ) {
-				break;
-			}
-		}
-		delay( 1 );
-	}
-
-	if( !timeout ) {
-		status = ETIMEDOUT;
-	}
-
-	return( status );
-}
-
-int sd_cache( sdio_dev_t *dev, const int op, uint32_t timeout )
-{
-	uint8_t		rval;
-	int			status;
-
-	switch( op ) {
-		case SDIO_CACHE_DISABLE:
-			status = sd_extr_wr( dev, dev->perf_enh_fcn_rsa, PERF_ENH_CACHE, 0 );
-			if( status == EOK ) {
-				dev->flags &= ~DEV_FLAG_WCE;
-			}
-			break;
-
-		case SDIO_CACHE_ENABLE:
-			status = sd_extr_wr( dev, dev->perf_enh_fcn_rsa, PERF_ENH_CACHE, PERF_ENH_CACHE_EN );
-			if( status == EOK ) {
-				dev->flags |= DEV_FLAG_WCE;
-			}
-			break;
-
-		case SDIO_CACHE_FLUSH:
-			if( ( dev->flags & DEV_FLAG_WCE ) ) {
-				if( ( status = sd_extr_wr( dev, dev->perf_enh_fcn_rsa, PERF_ENH_CACHE_FLUSH, PERF_ENH_CACHE_FLUSH_START ) ) ) {
-					return( status );
-				}
-
-					// wait up to 1 second
-				for( timeout = 1000; timeout; timeout-- ) {
-					status = sd_extr_rd( dev, dev->perf_enh_fcn_rsa, PERF_ENH_CACHE_FLUSH, &rval );
-					if( status == EOK ) {
-						if( ( rval & PERF_ENH_CACHE_FLUSH_START ) == 0 ) {
-							status = EOK;
-							break;
-						}
-						delay( 1 );
-					}
-				}
-
-				if( !timeout ) {
-					status = ETIMEDOUT;
-				}
-			}
-			else {
-				status = EOK;
-			}
-			break;
-
-		default:
-			status = EINVAL;
-			break;
-	}
-
-	return( status );
-}
-
 static int sd_voltage_switch( sdio_hc_t *hc )
 {
 	sdio_dev_t		*dev;
 	sdio_cmd_t		*cmd;
 	int				status;
 
-	cmd = sdio_alloc_cmd( );
-	if( cmd == NULL ) {
+	if( ( cmd = sdio_alloc_cmd( ) ) == NULL ) {
 		return( ENOMEM );
 	}
 
@@ -433,37 +223,33 @@ static int sd_voltage_switch( sdio_hc_t *hc )
 	return( status );
 }
 
-int sd_switch( sdio_dev_t * const dev, const int mode, const int grp, const uint8_t val, uint8_t * const switch_status )
+int sd_switch( sdio_dev_t *dev, int mode, int grp, uint8_t val, uint8_t *switch_status )
 {
 	sdio_cmd_t		*cmd;
-	uint32_t		arg;
+	int				arg;
 	uint8_t			*sbuf;
 	int				status;
 	uint16_t		sw_status;
 	sdio_sge_t		sge;
 
-	cmd = sdio_alloc_cmd( );
-	if( cmd == NULL ) {
+	if( ( cmd = sdio_alloc_cmd( ) ) == NULL ) {
 		return( ENOMEM );
 	}
 
-	sbuf = sdio_alloc( SD_SF_STATUS_SIZE );
-	if( sbuf == NULL ) {
+	if( ( sbuf = sdio_alloc( SD_SF_STATUS_SIZE ) ) == NULL ) {
 		sdio_free_cmd( cmd );
 		return( ENOMEM );
 	}
 
-	arg = ( mode << 31 ) | 0x00ffffffU;
+	arg = mode << 31 | 0x00ffffff;
 	arg &= ~( 0xf << ( grp * 4 ) );
 	arg |= ( val << ( grp * 4 ) );
 
 	sdio_setup_cmd( cmd, SCF_CTYPE_ADTC | SCF_RSP_R1, SD_SWITCH_FUNC, arg );
-	sge.sg_count = SD_SF_STATUS_SIZE;
-	sge.sg_address = SDIO_DATA_PTR_P( sbuf );
+	sge.sg_count = SD_SF_STATUS_SIZE; sge.sg_address = SDIO_DATA_PTR_P( sbuf );
 	sdio_setup_cmd_io( cmd, SCF_DIR_IN, 1, SD_SF_STATUS_SIZE, &sge, 1, NULL );
 
-	status = _sdio_send_cmd( dev, cmd, NULL, SDIO_TIME_DEFAULT, 0 );
-	if( status == EOK ) {
+	if( ( status = _sdio_send_cmd( dev, cmd, NULL, SDIO_TIME_DEFAULT, 0 ) ) == EOK ) {
 		memcpy( switch_status, sbuf, SD_SF_STATUS_SIZE );
 
 		if( mode == SD_SF_MODE_SET ) {
@@ -476,58 +262,58 @@ int sd_switch( sdio_dev_t * const dev, const int mode, const int grp, const uint
 	}
 	else {
 		sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, 0, 0, "%s: Error Switching %d", __FUNCTION__, status );
+
 	}
 
 	sdio_free( sbuf, SD_SF_STATUS_SIZE );
+
 	sdio_free_cmd( cmd );
 
 	return( status );
 }
 
-int sd_app_cmd( sdio_dev_t * const dev )
+int sd_app_cmd( sdio_dev_t *dev )
 {
 	sdio_cmd_t		*cmd;
 	int				ctype;
 	int				status;
 
-	cmd = sdio_alloc_cmd( );
-	if( cmd == NULL ) {
+	if( ( cmd = sdio_alloc_cmd( ) ) == NULL ) {
 		return( ENOMEM );
 	}
 
 	ctype = dev->rca ? SCF_CTYPE_BCR : SCF_CTYPE_BC;
 
 	sdio_setup_cmd( cmd, ctype | SCF_RSP_R1, SD_APP_CMD, dev->rca << 16 );
-	status = _sdio_send_cmd( dev, cmd, NULL, SDIO_TIME_DEFAULT, 0 );
+	if( ( status = _sdio_send_cmd( dev, cmd, NULL, SDIO_TIME_DEFAULT, 0 ) ) == EOK ) {
+
+	}
+
 	sdio_free_cmd( cmd );
 
 	return( status );
 }
 
-static int sd_app_send_scr( sdio_dev_t * const dev, uint32_t * const scr )
+static int sd_app_send_scr( sdio_dev_t *dev, uint32_t *scr )
 {
 	sdio_cmd_t		*cmd;
 	uint32_t		*sbuf;
 	int				status;
 	sdio_sge_t		sge;
 
-	cmd = sdio_alloc_cmd( );
-	if( cmd == NULL ) {
+	if( ( cmd = sdio_alloc_cmd( ) ) == NULL ) {
 		return( ENOMEM );
 	}
 
-	sbuf = sdio_alloc( SD_SCR_SIZE );
-	if( sbuf == NULL ) {
+	if( ( sbuf = sdio_alloc( SD_SCR_SIZE ) ) == NULL ) {
 		sdio_free_cmd( cmd );
 		return( ENOMEM );
 	}
 
 	sdio_setup_cmd( cmd, SCF_CTYPE_ADTC | SCF_RSP_R1 | SCF_APP_CMD, SD_AC_SEND_SCR, 0 );
-	sge.sg_count = SD_SCR_SIZE;
-	sge.sg_address = SDIO_DATA_PTR_P( sbuf );
+	sge.sg_count = SD_SCR_SIZE; sge.sg_address = SDIO_DATA_PTR_P( sbuf );
 	sdio_setup_cmd_io( cmd, SCF_DIR_IN, 1, SD_SCR_SIZE, &sge, 1, NULL );
-	status = _sdio_send_cmd( dev, cmd, NULL, SDIO_TIME_DEFAULT, 0 );
-	if( status == EOK ) {
+	if( ( status = _sdio_send_cmd( dev, cmd, NULL, SDIO_TIME_DEFAULT, 0 ) ) == EOK ) {
 		memcpy( scr, sbuf, SD_SCR_SIZE );
 	}
 
@@ -537,30 +323,26 @@ static int sd_app_send_scr( sdio_dev_t * const dev, uint32_t * const scr )
 	return( status );
 }
 
-int sd_app_sd_status( sdio_dev_t * const dev, uint32_t * const sds )
+static int sd_app_sd_status( sdio_dev_t *dev, uint32_t *sds )
 {
 	sdio_cmd_t		*cmd;
 	uint32_t		*sbuf;
 	int				status;
 	sdio_sge_t		sge;
 
-	cmd = sdio_alloc_cmd( );
-	if( cmd == NULL ) {
+	if( ( cmd = sdio_alloc_cmd( ) ) == NULL ) {
 		return( ENOMEM );
 	}
 
-	sbuf = sdio_alloc( SD_STATUS_SIZE );
-	if( sbuf == NULL ) {
+	if( ( sbuf = sdio_alloc( SD_STATUS_SIZE ) ) == NULL ) {
 		sdio_free_cmd( cmd );
 		return( ENOMEM );
 	}
 
 	sdio_setup_cmd( cmd, SCF_CTYPE_ADTC | SCF_RSP_R1 | SCF_APP_CMD, SD_AC_SD_STATUS, 0 );
-	sge.sg_count = SD_STATUS_SIZE;
-	sge.sg_address = SDIO_DATA_PTR_P( sbuf );
+	sge.sg_count = SD_STATUS_SIZE; sge.sg_address = SDIO_DATA_PTR_P( sbuf );
 	sdio_setup_cmd_io( cmd, SCF_DIR_IN, 1, SD_STATUS_SIZE, &sge, 1, NULL );
-	status = _sdio_send_cmd( dev, cmd, NULL, SDIO_TIME_DEFAULT, 0 );
-	if( status == EOK ) {
+	if( ( status = _sdio_send_cmd( dev, cmd, NULL, SDIO_TIME_DEFAULT, 0 ) ) == EOK ) {
 		memcpy( sds, sbuf, SD_STATUS_SIZE );
 	}
 
@@ -570,7 +352,7 @@ int sd_app_sd_status( sdio_dev_t * const dev, uint32_t * const sds )
 	return( status );
 }
 
-static uint64_t sd_erase_grp_size( sdio_dev_t * const dev )
+static uint64_t sd_erase_grp_size( sdio_dev_t *dev )
 {
 	uint64_t	erase_grp_size;
 
@@ -584,7 +366,7 @@ static uint64_t sd_erase_grp_size( sdio_dev_t * const dev )
 	return( erase_grp_size );
 }
 
-uint64_t sd_erase_timeout( sdio_dev_t * const dev, const uint32_t etype, const uint32_t nlba )
+uint64_t sd_erase_timeout( sdio_dev_t *dev, uint32_t etype, uint32_t nlba )
 {
 	uint64_t		timeout;
 
@@ -598,7 +380,7 @@ uint64_t sd_erase_timeout( sdio_dev_t * const dev, const uint32_t etype, const u
 	return( timeout );
 }
 
-int sd_erase( sdio_dev_t * const dev, const uint32_t flgs, uint64_t lba, uint32_t nlba )
+int sd_erase( sdio_dev_t *dev, int flgs, uint64_t lba, int nlba )
 {
 	sdio_cmd_t		*cmd;
 	int				status;
@@ -607,19 +389,17 @@ int sd_erase( sdio_dev_t * const dev, const uint32_t flgs, uint64_t lba, uint32_
 
 	status			= EOK;
 
-	cmd = sdio_alloc_cmd( );
-	if( cmd == NULL ) {
+	if( ( cmd = sdio_alloc_cmd( ) ) == NULL ) {
 		return( ENOMEM );
 	}
 
 	while( nlba ) {
 		addr = ( dev->caps & DEV_CAP_HC ) ? lba : ( lba * dev->csd.blksz );
 		sdio_setup_cmd( cmd, SCF_CTYPE_AC | SCF_RSP_R1, SD_ERASE_WR_BLK_START, addr );
-		status = _sdio_send_cmd( dev, cmd, NULL, SDIO_TIME_DEFAULT, 0 );
-		if( status != EOK ) {
+		if( ( status = _sdio_send_cmd( dev, cmd, NULL, SDIO_TIME_DEFAULT, 0 ) ) != EOK ) {
 			break;
 		}
-
+		
 		timeout = sd_erase_timeout( dev, flgs, nlba );
 		lba		+= nlba;
 		nlba	-= nlba;
@@ -627,14 +407,12 @@ int sd_erase( sdio_dev_t * const dev, const uint32_t flgs, uint64_t lba, uint32_
 
 		addr = ( dev->caps & DEV_CAP_HC ) ? lba : ( lba * dev->csd.blksz );
 		sdio_setup_cmd( cmd, SCF_CTYPE_AC | SCF_RSP_R1, SD_ERASE_WR_BLK_END, addr );
-		status = _sdio_send_cmd( dev, cmd, NULL, SDIO_TIME_DEFAULT, 0 );
-		if( status != EOK ) {
+		if( ( status = _sdio_send_cmd( dev, cmd, NULL, SDIO_TIME_DEFAULT, 0 ) ) != EOK ) {
 			break;
 		}
 
 		sdio_setup_cmd( cmd, SCF_CTYPE_AC | SCF_RSP_R1B | SCF_WAIT_DRDY, SD_ERASE, flgs );
-		status = _sdio_send_cmd( dev, cmd, NULL, timeout, 0 );
-		if( status != EOK ) {
+		if( ( status = _sdio_send_cmd( dev, cmd, NULL, timeout, 0 ) ) != EOK ) {
 			break;
 		}
 	}
@@ -644,22 +422,20 @@ int sd_erase( sdio_dev_t * const dev, const uint32_t flgs, uint64_t lba, uint32_
 	return( status );
 }
 
-int sd_send_if_cond( sdio_hc_t *hc, const uint32_t vhs )
+int sd_send_if_cond( sdio_hc_t *hc, uint32_t vhs )
 {
 	sdio_dev_t		*dev;
 	sdio_cmd_t		*cmd;
 	int				status;
 
-	cmd = sdio_alloc_cmd( );
-	if( cmd == NULL ) {
+	if( ( cmd = sdio_alloc_cmd( ) ) == NULL ) {
 		return( ENOMEM );
 	}
 
 	dev	= &hc->device;
 
 	sdio_setup_cmd( cmd, SCF_CTYPE_BCR | SCF_RSP_R7, SD_SEND_IF_COND, ( vhs << 8 ) | SD_SIC_TEST_PATTERN );
-	status = _sdio_send_cmd( dev, cmd, NULL, SDIO_TIME_DEFAULT, 0 );
-	if( status == EOK ) {
+	if( ( status = _sdio_send_cmd( dev, cmd, NULL, SDIO_TIME_DEFAULT, 0 ) ) == EOK ) {
 		if( ( cmd->rsp[0] & 0xff ) != SD_SIC_TEST_PATTERN ) {
 			status = EIO;
 		}
@@ -678,15 +454,14 @@ int sd_send_if_cond( sdio_hc_t *hc, const uint32_t vhs )
 	return( status );
 }
 
-static int sd_app_send_op_cond( sdio_hc_t *hc, const uint32_t ocr, uint32_t *rocr )
+static int sd_app_send_op_cond( sdio_hc_t *hc, uint32_t ocr, uint32_t *rocr )
 {
 	sdio_dev_t		*dev;
 	sdio_cmd_t		*cmd;
 	int				retry;
 	int				status;
 
-	cmd = sdio_alloc_cmd( );
-	if( cmd == NULL ) {
+	if( ( cmd = sdio_alloc_cmd( ) ) == NULL ) {
 		return( ENOMEM );
 	}
 
@@ -696,8 +471,7 @@ static int sd_app_send_op_cond( sdio_hc_t *hc, const uint32_t ocr, uint32_t *roc
 	sdio_setup_cmd( cmd, SCF_CTYPE_BCR | SCF_RSP_R3 | SCF_APP_CMD, SD_AC_SEND_OP_COND, ocr );
 
 	for( retry = OCR_BUSY_RETRIES; retry; retry-- ) {
-		status = _sdio_send_cmd( dev, cmd, NULL, SDIO_TIME_DEFAULT, SDIO_CMD_RETRIES );
-		if( status != EOK ) {
+		if( ( status = _sdio_send_cmd( dev, cmd, NULL, SDIO_TIME_DEFAULT, SDIO_CMD_RETRIES ) ) != EOK ) {
 			break;
 		}
 
@@ -713,7 +487,7 @@ static int sd_app_send_op_cond( sdio_hc_t *hc, const uint32_t ocr, uint32_t *roc
 	}
 
 	if( hc->cfg.verbosity > 3 ) {
-		sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, hc->cfg.verbosity, 0, "%s: retries %d, rsp0 0x%x", __FUNCTION__, OCR_BUSY_RETRIES - retry, cmd->rsp[0] );
+		sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 0, "%s: retries %d, rsp0 0x%x", __FUNCTION__, OCR_BUSY_RETRIES - retry, cmd->rsp[0] );
 	}
 
 	if( rocr ) {
@@ -722,9 +496,7 @@ static int sd_app_send_op_cond( sdio_hc_t *hc, const uint32_t ocr, uint32_t *roc
 
 	sdio_free_cmd( cmd );
 
-	if( !retry ) {
-		status = ETIMEDOUT;
-	}
+	if( !retry ) status = ETIMEDOUT;
 
 	return( status );
 }
@@ -811,82 +583,18 @@ static int sd_read_status( sdio_dev_t *dev )
 		}
 	}
 
-	au = sdio_extract_bits( sds, 512, 392, 4 );
+	au = sdio_extract_bits( sds, 512, 396, 4 );
 	if( au ) {
 //		dev->sds.uhs_au_size = 1 << ( au + 4 );
 	}
 
-	dev->sds.perf_class			= sdio_extract_bits( sds, 512, 336, 4 );
-	dev->sds.perf_enh			= sdio_extract_bits( sds, 512, 328, 8 );
+
 	dev->sds.speed_class		= sdio_extract_bits( sds, 512, 440, 8 );
 	dev->sds.uhs_speed_grade	= sdio_extract_bits( sds, 512, 396, 4 );
 	return( status );
 }
 
-__attribute__((used))
-static int sd_parse_extended_fcn( sdio_dev_t *dev )
-{
-	sd_fcn_ext_hdr	*feh;
-	sd_fcn_ext		*fext;
-	uint32_t		fcn;
-	uint8_t			rval;
-	int				status;
-	uint8_t			efb[SD_FCN_PG_SZ * 2] = { 0 };	// 512 * 2
-
-	feh		= (sd_fcn_ext_hdr *)efb;
-	fext	= (sd_fcn_ext *)(feh + 1);
-
-	if( !( dev->scr.cmd_support & SCR_CMD48_49_SUP ) ) {
-		return( ENOTSUP );
-	}
-
-		// read general information page 0
-	if( ( status = sd_rw_extr( dev, SCF_DIR_IN, SD_EXTR_MEM, 0, 0, 0, SD_FCN_PG_SZ, efb ) ) ) {
-		return( status );
-	}
-
-		// read general information page 1 (optional no error check)
-	sd_rw_extr( dev, SCF_DIR_IN, SD_EXTR_MEM, 0, 0, SD_FCN_PG_SZ, SD_FCN_PG_SZ, efb +  SD_FCN_PG_SZ );
-
-	for( fcn = 1; fcn <= feh->number_extensions; fcn++ ) {
-		sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, dev->hc->cfg.verbosity, 0, "%s: fcn %d, sfc %d, fcc %d, fmc %d, fmn %s, pfc %d, fn %s, pne %d, nrs %d, rsa 0x%x, fno %d, saddr 0x%x",
-			__FUNCTION__, fcn, fext->sfc, fext->fcc, fext->fmc, fext->fmn, fext->pfc, fext->fn, fext->pne, fext->nrs,
-			fext->rsa[0], SD_FCN_EXT_FNO( fext->rsa[0] ), SD_FCN_EXT_SADDR( fext->rsa[0] ) );
-		switch( fext->sfc ) {
-			case SFC_PWR_MGNT:
-				dev->pwr_mgnt_fcn_rsa = fext->rsa[0];
-				status = sd_extr_rd( dev, dev->pwr_mgnt_fcn_rsa, PWR_MGNT_STATUS, &rval );
-				if( status == EOK ) {
-					if( ( rval & PWR_MGNT_STATUS_POFS ) ) {
-						dev->caps |= DEV_CAP_PWROFF_NOTIFY;
-					}
-				}
-				break;
-			case SFC_PERF_ENH:
-				dev->perf_enh_fcn_rsa = fext->rsa[0];
-				status = sd_extr_rd( dev, dev->perf_enh_fcn_rsa, PERF_ENH_CACHE_SUP, &rval );
-				if( status == EOK ) {
-					if( ( rval & PERF_ENH_CACHE_SUPPORTED ) ) {
-						dev->caps |= DEV_CAP_CACHE;
-					}
-				}
-				break;
-			default:
-				break;
-		}
-		fext = (sd_fcn_ext *)&efb[fext->pne];
-
-			// range check
-		if( ( (uintptr_t)fext + sizeof( sd_fcn_ext ) ) > (uintptr_t)( efb + sizeof( efb ) ) ) {
-			sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, dev->hc->cfg.verbosity, 0, "%s: Range limit", __FUNCTION__ );
-			break;
-		}
-	}
-
-	return( status );
-}
-
-static int sd_switch_hs( sdio_dev_t * const dev )
+static int sd_switch_hs( sdio_dev_t *dev )
 {
 	sdio_hc_t	*hc;
 	int			status;
@@ -894,8 +602,8 @@ static int sd_switch_hs( sdio_dev_t * const dev )
 
 	hc = dev->hc;
 
-	status = sd_switch( dev, SD_SF_MODE_SET, SD_SF_GRP_BUS_SPD, 1, sw_status );
-	if( status == EOK ) {
+	if( ( status = sd_switch( dev, SD_SF_MODE_SET, SD_SF_GRP_BUS_SPD, 
+				1, sw_status ) ) == EOK ) {
 		if( ( sw_status[16] & 0xF ) != 0x1 ) {
 			status = EIO;
 		}
@@ -908,13 +616,12 @@ static int sd_switch_hs( sdio_dev_t * const dev )
 	return( status );
 }
 
-static int sd_app_set_bus_width( sdio_dev_t * const dev, const uint32_t width )
+static int sd_app_set_bus_width( sdio_dev_t *dev, int width )
 {
 	sdio_cmd_t		*cmd;
 	int				status;
 
-	cmd = sdio_alloc_cmd( );
-	if( cmd == NULL ) {
+	if( ( cmd = sdio_alloc_cmd( ) ) == NULL ) {
 		return( ENOMEM );
 	}
 
@@ -925,10 +632,10 @@ static int sd_app_set_bus_width( sdio_dev_t * const dev, const uint32_t width )
 	return( status );
 }
 
-static int sd_set_bus_width( sdio_dev_t * const dev, const uint32_t width )
+static int sd_set_bus_width( sdio_dev_t *dev, int width )
 {
 	sdio_hc_t	*hc;
-	uint32_t	bus_width;
+	int			bus_width;
 	int			status;
 
 	hc		= dev->hc;
@@ -954,11 +661,8 @@ static int sd_set_bus_width( sdio_dev_t * const dev, const uint32_t width )
 			break;
 	}
 
-	if( status == EOK ) {
-		status = sd_app_set_bus_width( dev, bus_width );
-		if( status == EOK ) {
-			sdio_bus_width( hc, BUS_WIDTH_4 );
-		}
+	if( status == EOK && ( status = sd_app_set_bus_width( dev, bus_width ) ) == EOK ) {
+		sdio_bus_width( hc, BUS_WIDTH_4 );
 	}
 	else {
 		sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 0, "%s: Error Setting Bus Width %d", __FUNCTION__, width );
@@ -967,7 +671,7 @@ static int sd_set_bus_width( sdio_dev_t * const dev, const uint32_t width )
 	return( status );
 }
 
-static int sd_set_drv_type( sdio_dev_t * const dev, const int bus_spd, uint32_t drv_type )
+static int sd_set_drv_type( sdio_dev_t *dev, int bus_spd, int drv_type )
 {
 	sdio_hc_t	*hc;
 	int			idx;
@@ -989,10 +693,9 @@ static int sd_set_drv_type( sdio_dev_t * const dev, const int bus_spd, uint32_t 
 		return( EINVAL );
 	}
 
-	drv_type		= hc->entry.driver_strength( hc, timing[idx], drv_type | SD_DRV_TYPE_B );
-	driver_strength	= fls( drv_type ) - 1;
-	status			= sd_switch( dev, SD_SF_MODE_SET, SD_SF_GRP_DRV_STR, driver_strength, sw_status );
-	if( status == EOK ) {
+	drv_type	= hc->entry.driver_strength( hc, timing[idx], drv_type | SD_DRV_TYPE_B );
+	driver_strength = fls( drv_type ) - 1;
+	if( ( status = sd_switch( dev, SD_SF_MODE_SET, SD_SF_GRP_DRV_STR, driver_strength, sw_status ) ) == EOK ) {
 		if( ( sw_status[15] & 0xF ) == driver_strength ) {
 			sdio_drv_type( hc, drv_type );
 		}
@@ -1008,16 +711,16 @@ static int sd_set_drv_type( sdio_dev_t * const dev, const int bus_spd, uint32_t 
 	return( status );
 }
 
-static int sd_set_bus_speed_mode( sdio_dev_t * const dev, const int bus_spd )
+static int sd_set_bus_speed_mode( sdio_dev_t *dev, int bus_spd )
 {
-	sdio_hc_t		*hc;
-	int				idx;
-	int				status;
-	static uint32_t	dtr[5]		= { DTR_MAX_SDR12, DTR_MAX_SDR25, DTR_MAX_SDR50,
-									DTR_MAX_SDR104, DTR_MAX_DDR50 };
-	static uint32_t	timing[5]	= { TIMING_SDR12, TIMING_SDR25, TIMING_SDR50,
-									TIMING_SDR104, TIMING_DDR50 };
-	uint8_t			sw_status[64] = { 0 };
+	sdio_hc_t	*hc;
+	int			idx;
+	int			status;
+	static int	dtr[5]		= { DTR_MAX_SDR12, DTR_MAX_SDR25, DTR_MAX_SDR50,
+								DTR_MAX_SDR104, DTR_MAX_DDR50 };
+	static int	timing[5]	= { TIMING_SDR12, TIMING_SDR25, TIMING_SDR50,
+								TIMING_SDR104, TIMING_DDR50 };
+	uint8_t		sw_status[64] = { 0 };
 
 	if( !bus_spd ) {
 		return( EOK );
@@ -1030,8 +733,7 @@ static int sd_set_bus_speed_mode( sdio_dev_t * const dev, const int bus_spd )
 		return( EINVAL );
 	}
 
-	status = sd_switch( dev, SD_SF_MODE_SET, SD_SF_GRP_BUS_SPD, idx, sw_status );
-	if( status == EOK ) {
+	if( ( status = sd_switch( dev, SD_SF_MODE_SET, SD_SF_GRP_BUS_SPD, idx, sw_status ) ) == EOK ) {
 		if( ( sw_status[16] & 0xF ) == idx ) {
 			sdio_timing( hc, timing[idx] );
 			sdio_clock( hc, dtr[idx] );
@@ -1048,7 +750,7 @@ static int sd_set_bus_speed_mode( sdio_dev_t * const dev, const int bus_spd )
 	return( status );
 }
 
-static int sd_set_current_limit( sdio_dev_t * const dev, const int bus_spd, int curr_limit )
+static int sd_set_current_limit( sdio_dev_t *dev, int bus_spd, int curr_limit )
 {
 	sdio_hc_t	*hc;
 	int			idx;
@@ -1065,8 +767,7 @@ static int sd_set_current_limit( sdio_dev_t * const dev, const int bus_spd, int 
 		idx = fls( curr_limit ) - 1;	// get index to highest current
 	}
 
-	status = sd_switch( dev, SD_SF_MODE_SET, SD_SF_GRP_CUR_LMT, idx, sw_status );
-	if( status == EOK ) {
+	if( ( status = sd_switch( dev, SD_SF_MODE_SET, SD_SF_GRP_CUR_LMT, idx, sw_status ) ) == EOK ) {
 		if( ( ( sw_status[15] >> 4 ) & 0x0F ) != idx ) {
 			status = EIO;
 		}
@@ -1081,19 +782,18 @@ static int sd_set_current_limit( sdio_dev_t * const dev, const int bus_spd, int 
 
 static int sd_init_assd( sdio_dev_t *dev )
 {
-	sdio_hc_t			*hc;
+	sdio_hc_t	*hc;
 	sd_switch_cap_t		*swcaps;
 	int					idx;
 	int					status;
 	uint8_t				sw_status[64] = { 0 };
 
-	hc		= dev->hc;
+	hc	= dev->hc;
 	swcaps	= &dev->swcaps;
 
 		// get index to eC/ASSD
-	idx		= ffs( swcaps->cmd_sys & ( SD_CMD_SYS_EC | SD_CMD_SYS_ASSD ) ) - 1;
-	status	= sd_switch( dev, SD_SF_MODE_SET, SD_SF_GRP_CMD_EXT, idx, sw_status );
-	if( status == EOK ) {
+	idx = ffs( swcaps->cmd_sys & ( SD_CMD_SYS_EC | SD_CMD_SYS_ASSD ) ) - 1;
+	if( ( status = sd_switch( dev, SD_SF_MODE_SET, SD_SF_GRP_CMD_EXT, idx, sw_status ) ) == EOK ) {
 		if( ( ( sw_status[16] >> 4 ) & 0x0F ) != idx ) {
 			status = EIO;
 		}
@@ -1111,28 +811,23 @@ static int sd_init_assd( sdio_dev_t *dev )
 	return( status );
 }
 
-static int sd_select_bus_mode( sdio_dev_t * const dev, const int bus_mode )
+static int sd_select_bus_mode( sdio_dev_t *dev, int bus_mode )
 {
 	sdio_hc_t		*hc;
 	int				bus_spd_mode;
 
 	hc				= dev->hc;
 
-	if( (bus_mode & SD_BUS_MODE_SDR104) && (hc->caps & HC_CAP_SDR104) ) {
+	if( (bus_mode & SD_BUS_MODE_SDR104) && (hc->caps & HC_CAP_SDR104) )
 		bus_spd_mode = SD_BUS_MODE_SDR104;
-	}
-	else if( (bus_mode & SD_BUS_MODE_DDR50) && (hc->caps & HC_CAP_DDR50) ) {
+	else if( (bus_mode & SD_BUS_MODE_DDR50) && (hc->caps & HC_CAP_DDR50) )
 		bus_spd_mode = SD_BUS_MODE_DDR50;
-	}
-	else if( (bus_mode & SD_BUS_MODE_SDR50) && (hc->caps & HC_CAP_SDR50) ) {
+	else if( (bus_mode & SD_BUS_MODE_SDR50) && (hc->caps & HC_CAP_SDR50) )
 		bus_spd_mode = SD_BUS_MODE_SDR50;
-	}
-	else if( (bus_mode & SD_BUS_MODE_SDR25) && (hc->caps & HC_CAP_SDR25) ) {
+	else if( (bus_mode & SD_BUS_MODE_SDR25) && (hc->caps & HC_CAP_SDR25) )
 		bus_spd_mode = SD_BUS_MODE_SDR25;
-	}
-	else {
+	else
 		bus_spd_mode = SD_BUS_MODE_SDR12;
-	}
 
 	return( bus_spd_mode );
 }
@@ -1147,31 +842,26 @@ static int sd_init_uhs( sdio_dev_t *dev )
 	hc		= dev->hc;
 	swcaps	= &dev->swcaps;
 
-	status = sd_set_bus_width( dev, BUS_WIDTH_4 );
-	if( status != EOK ) {
+	if( ( status = sd_set_bus_width( dev, BUS_WIDTH_4 ) ) != EOK ) {
 		return( status );
 	}
 
 	bus_spd_mode = sd_select_bus_mode( dev, swcaps->bus_mode );
 
-	status = sd_set_drv_type( dev, bus_spd_mode, swcaps->drv_type );
-	if( status != EOK ) {
+	if( ( status = sd_set_drv_type( dev, bus_spd_mode, swcaps->drv_type ) ) != EOK ) {
 		return( status );
 	}
 
-	status = sd_set_current_limit( dev, bus_spd_mode, swcaps->curr_limit );
-	if( status != EOK ) {
+	if( ( status = sd_set_current_limit( dev, bus_spd_mode, swcaps->curr_limit ) ) ) {
 		return( status );
 	}
 
-	status = sd_set_bus_speed_mode( dev, bus_spd_mode );
-	if( status != EOK ) {
+	if( ( status = sd_set_bus_speed_mode( dev, bus_spd_mode ) ) != EOK ) {
 		return( status );
 	}
 
 	sdio_preset( hc, SDIO_TRUE );
-	status = sdio_tune( hc, SD_SEND_TUNING_BLOCK );
-	if( status != EOK ) {
+	if( ( status = sdio_tune( hc, SD_SEND_TUNING_BLOCK ) ) ) {
 			// tuning may have failed, but we should should be able to continue.
 			// ie hc will use defaults an we will re-tune if we get a CRC error
 		sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 0, "%s: tuning failure %s (%d)", __FUNCTION__, strerror( status ), status );
@@ -1186,7 +876,7 @@ static int sd_init_bus( sdio_hc_t *hc )
 {
 	sdio_dev_t		*dev;
 	uint32_t		dtr;
-	uint32_t		timing;
+	int				timing;
 	int				status;
 
 	dev		= &hc->device;
@@ -1194,15 +884,13 @@ static int sd_init_bus( sdio_hc_t *hc )
 	timing	= TIMING_LS;
 
 	if( hc->signal_voltage == SIGNAL_VOLTAGE_1_8 ) {	// UHS card
-		status = sd_init_uhs( dev );
-		if( status != EOK ) {
+		if( ( status = sd_init_uhs( dev ) ) != EOK ) {
 			return( status );
 		}
 	}
 	else {
 		if( ( dev->caps & DEV_CAP_HS ) ) {				// HS card
-			status = sd_switch_hs( dev );
-			if( status != EOK ) {
+			if( ( status = sd_switch_hs( dev ) ) != EOK ) {
 				return( status );
 			}
 
@@ -1212,17 +900,15 @@ static int sd_init_bus( sdio_hc_t *hc )
 		}
 
 		if( ( hc->caps & HC_CAP_BW4 ) && ( dev->scr.sd_bus_widths & SCR_BUS_WIDTH_4 ) ) {
-			status = sd_set_bus_width( dev, BUS_WIDTH_4 );
-			if( status != EOK ) {
+			if( ( status = sd_set_bus_width( dev, BUS_WIDTH_4 ) ) != EOK ) {
 				return( status );
 			}
 		}
 
 		sdio_timing( hc, timing );
 		sdio_clock( hc, dtr );
-
-		status = _sdio_set_block_length( dev, SDIO_DFLT_BLKSZ );
-		if( status != EOK ) {
+	
+		if( ( status = _sdio_set_block_length( dev, SDIO_DFLT_BLKSZ ) ) != EOK ) {
 			return( status );
 		}
 	}
@@ -1238,36 +924,30 @@ static int sd_capabilities( sdio_dev_t *dev )
 {
 	int		status;
 
-	status = sd_app_send_scr( dev, dev->raw_scr );
-	if( status != EOK ) {
+	if( ( status = sd_app_send_scr( dev, dev->raw_scr ) ) != EOK ) {
 		return( status );
 	}
 
-	status = sd_parse_scr( dev, &dev->scr, dev->raw_scr );
-	if( status != EOK ) {
+	if( ( status = sd_parse_scr( dev, &dev->scr, dev->raw_scr ) ) != EOK ) {
 		return( status );
 	}
 
-	status = sd_read_status( dev );
-	if( status != EOK ) {
+	if( ( status = sd_read_status( dev ) ) != EOK ) {
 		return( status );
 	}
 
-	status = sd_read_switch( dev );
-	if( status != EOK ) {
+	if( ( status = sd_read_switch( dev ) ) != EOK ) {
 		return( status );
 	}
 
+//	dev->sector_size	= dev->csd.blksz;
+//	dev->sectors		= dev->csd.sectors;
 	dev->erase_size		= sd_erase_grp_size( dev );
-
-#ifdef SDIO_APP_SPEC_FCN_EXT
-	sd_parse_extended_fcn( dev );
-#endif
 
 	return( status );
 }
 
-int sd_lock_unlock( sdio_dev_t *dev, const int action, uint8_t * const pwd, const uint32_t pwd_len )
+int sd_lock_unlock( sdio_dev_t *dev, int action, uint8_t *pwd, int pwd_len )
 {
 	sdio_hc_t	*hc;
 	uint32_t	oflags;
@@ -1281,7 +961,9 @@ int sd_lock_unlock( sdio_dev_t *dev, const int action, uint8_t * const pwd, cons
 		dev->pwd_len = pwd_len;
 	}
 
-	status = _sdio_lock_unlock( dev, action, pwd, pwd_len );
+	if( ( status = _sdio_lock_unlock( dev, action, pwd, pwd_len ) ) ) {
+
+	}
 
 	if( ( dev->flags & DEV_FLAG_LOCKED ) ) {
 		if( action == SD_LU_UNLOCK ) {
@@ -1290,12 +972,10 @@ int sd_lock_unlock( sdio_dev_t *dev, const int action, uint8_t * const pwd, cons
 	}
 	else {
 		if( ( oflags & DEV_FLAG_LOCKED ) ) {
-			status = sd_capabilities( dev );
-			if( status != EOK ) {
+			if( ( status = sd_capabilities( dev ) ) ) {
 				return( status );
 			}
-			status = sd_init_bus( hc );
-			if( status != EOK ) {
+			if( ( status = sd_init_bus( hc ) ) != EOK ) {
 				return( status );
 			}
 		}
@@ -1304,7 +984,7 @@ int sd_lock_unlock( sdio_dev_t *dev, const int action, uint8_t * const pwd, cons
 	return( status );
 }
 
-static int sd_unlock( sdio_dev_t * const dev )
+static int sd_unlock( sdio_dev_t *dev )
 {
 	sdio_hc_t	*hc;
 	int			status;
@@ -1313,8 +993,7 @@ static int sd_unlock( sdio_dev_t * const dev )
 	status	= EOK;
 
 	if( ( dev->flags & DEV_FLAG_LOCKED ) && dev->pwd_len ) {
-		status = _sdio_lock_unlock( dev, SD_LU_UNLOCK, dev->pwd, dev->pwd_len );
-		if( status != EOK ) {
+		if( ( status = _sdio_lock_unlock( dev, SD_LU_UNLOCK, dev->pwd, dev->pwd_len ) ) ) {
 			sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 0, "%s: SD UNLOCK failure", __FUNCTION__ );
 		}
 	}
@@ -1322,18 +1001,13 @@ static int sd_unlock( sdio_dev_t * const dev )
 	return( status );
 }
 
-int sd_init_device( sdio_hc_t *hc, uint32_t ocr, const int flgs )
+int sd_init_device( sdio_hc_t *hc, uint32_t ocr, int flgs )
 {
-	sdio_dev_t					*dev;
-	uint32_t					rocr;
-	uint32_t					cid[4];
-	int							status;
-	sdio_device_errata_t		*errata;
-	static sdio_device_errata_t	sd_errata[] = {
-			// secusmart devices require extra 50ms after ASSD selection
-		{ .pnm = "SD0", .mid = 0x27, .oid = DEV_ERRATA_WILDCARD, .prv_s = 0, .prv_e = DEV_ERRATA_WILDCARD, .erev = DEV_ERRATA_WILDCARD, .errata = 0, .rsettle = 50 },
-
-		{ .pnm = NULL, .mid = 0, .oid = 0, .prv_s = 0, .prv_e = 0, .erev = 0, .errata = 0, .rsettle = 0 } };
+	sdio_dev_t				*dev;
+	uint32_t				rocr;
+	uint32_t				cid[4];
+	int						status;
+	sdio_device_errata_t	*errata;
 
 	dev			= &hc->device;
 	dev->rca	= 0;
@@ -1342,8 +1016,7 @@ int sd_init_device( sdio_hc_t *hc, uint32_t ocr, const int flgs )
 	sdio_go_idle( hc );
 
 		// determine card version (CMD8 was added in 2.0)
-	status = sd_send_if_cond( hc, SD_SIC_VHS_27_36V );
-	if( status == EOK ) {
+	if( ( status = sd_send_if_cond( hc, SD_SIC_VHS_27_36V ) ) == EOK ) {
 #ifdef SDIO_UC_SUPPORT
 		ocr |= OCR_HCS | OCR_HO2T;			// 2.0/3.0 card, enable high/ultra capacity
 #else
@@ -1352,9 +1025,6 @@ int sd_init_device( sdio_hc_t *hc, uint32_t ocr, const int flgs )
 	}
 	else if( status != ETIMEDOUT ) {
 		return( EIO );
-	}
-	else {
-		// nothing
 	}
 
 		// HC supports 1.8V signalling
@@ -1370,8 +1040,7 @@ int sd_init_device( sdio_hc_t *hc, uint32_t ocr, const int flgs )
 	}
 
 	while( 1 ) {
-		status = sd_app_send_op_cond( hc, ocr, &rocr );
-		if( status != EOK ) {
+		if( ( status = sd_app_send_op_cond( hc, ocr, &rocr ) ) != EOK ) {
 			return( status );
 		}
 #ifdef SDIO_UC_SUPPORT
@@ -1379,22 +1048,19 @@ int sd_init_device( sdio_hc_t *hc, uint32_t ocr, const int flgs )
 #else
 		if( ( rocr & ( OCR_HCS | OCR_S18A ) ) == ( OCR_HCS | OCR_S18A ) ) {
 #endif
-			status = sd_voltage_switch( hc );
-			if( status != EOK ) {
+			if( ( status = sd_voltage_switch( hc ) ) != EOK ) {
 				ocr &= ~OCR_S18R;
 				continue;
 			}
-			status = sdio_signal_voltage( hc, SIGNAL_VOLTAGE_1_8 );
-			if( status != EOK ) {
+			if( ( status = sdio_signal_voltage( hc, SIGNAL_VOLTAGE_1_8 ) ) ) {
 				dev->flags |= DEV_FLAG_SIG_ERR;
 				return( status );
 			}
 		}
 		break;
 	}
-
-	status = sdio_all_send_cid( hc, cid );
-	if( status != EOK ) {
+	
+	if( ( status = sdio_all_send_cid( hc, cid ) ) != EOK ) {
 		return( status );
 	}
 
@@ -1404,38 +1070,32 @@ int sd_init_device( sdio_hc_t *hc, uint32_t ocr, const int flgs )
 
 	memcpy( dev->raw_cid, cid, sizeof( cid ) );
 
-	status = sdio_send_relative_addr( hc, &dev->rca );
-	if( status != EOK ) {
+	if( ( status = sdio_send_relative_addr( hc, &dev->rca ) ) != EOK ) {
 		return( status );
 	}
 
 	sdio_bus_mode( hc, BUS_MODE_PUSH_PULL );
 
 	if( !flgs ) {
-		status = sd_parse_cid( dev, &dev->cid, dev->raw_cid );
-		if( status != EOK ) {
+		if( ( status = sd_parse_cid( dev, &dev->cid, dev->raw_cid ) ) != EOK ) {
 			return( status );
 		}
 
-		status = sdio_send_csd( dev, dev->raw_csd );
-		if( status != EOK ) {
+		if( ( status = sdio_send_csd( dev, dev->raw_csd ) ) != EOK ) {
 			return( status );
 		}
 
-		status = sd_parse_csd( dev, &dev->csd, dev->raw_csd );
-		if( status != EOK ) {
+		if( ( status = sd_parse_csd( dev, &dev->csd, dev->raw_csd ) ) != EOK ) {
 			return( status );
 		}
 
-		errata = sdio_device_errata( dev, sd_errata );
-		if( errata != NULL ) {
+		if( ( errata = sdio_device_errata( dev, sd_errata ) ) ) {
 			sdio_reconcile_errata( dev, errata );
 			dev->rsettle = errata->rsettle;
 		}
 	}
 
-	status = sdio_select_card( dev, dev->rca );
-	if( status != EOK ) {
+	if( ( status = sdio_select_card( dev, dev->rca ) ) != EOK ) {
 		return( status );
 	}
 
@@ -1448,28 +1108,14 @@ int sd_init_device( sdio_hc_t *hc, uint32_t ocr, const int flgs )
 	}
 
 	if( !flgs ) {
-		status = sd_capabilities( dev );
-		if( status != EOK ) {
+		if( ( status = sd_capabilities( dev ) ) ) {
 			return( status );
 		}
 	}
 
-		// Attempt to detect hardware/drivers that don't support a power cycle.
-		// Read switch to determine if the device is still in 1.8V signaling.
-	if( ( hc->caps & HC_CAP_SV_1_8V ) && ( hc->signal_voltage != SIGNAL_VOLTAGE_1_8 ) ) {
-		status = sd_read_switch( dev );
-		if( status == EOK ) {
-			if( ( dev->swcaps.bus_mode & SD_BUS_MODE_UHS ) ) {
-				sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 0, "%s:  Device still in 1.8V signaling", __FUNCTION__ );
-				status = sdio_signal_voltage( hc, SIGNAL_VOLTAGE_1_8 );
-				if( status != EOK ) {
-					sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 0, "%s:  sdio_signal_voltage failure", __FUNCTION__ );
-				}
-			}
-		}
+	if( ( status = sd_init_bus( hc ) ) != EOK ) {
+		return( status );
 	}
-
-	status = sd_init_bus( hc );
 
 	return( status );
 }
@@ -1491,9 +1137,9 @@ int sd_bus_error( sdio_dev_t *dev )
 		swcaps->dtr_max_hs = max( DTR_MAX_HS26, swcaps->dtr_max_hs - DTR_HS_DEC );
 	}
 	else {
-			//	If low speed card, reduce the speed by 10%
-		csd->dtr_max -= ( csd->dtr_max + 9 ) / 10;
-		if( csd->dtr_max < DTR_MIN_LS ) {
+		//	If low speed card, reduce the speed by 10%
+		csd->dtr_max -= (csd->dtr_max + 9)/10;
+		if (csd->dtr_max < DTR_MIN_LS) {
 			csd->dtr_max = DTR_MIN_LS;
 		}
 	}
@@ -1507,21 +1153,24 @@ int sd_ident( sdio_hc_t *hc )
 	uint32_t	ocr;
 	int			status;
 
-	dev			= &hc->device;
+	dev		= &hc->device;
 	dev->rca	= 0;
 
 	sdio_go_idle( hc );
 	sd_send_if_cond( hc, SD_SIC_VHS_27_36V );
-	status = sd_app_send_op_cond( hc, 0, &ocr );
-	if( status == EOK ) {
-		status = sdio_select_voltage( hc, ocr );
-		if( status == EOK ) {
-			status = sd_init_device( hc, dev->ocr, SDIO_FALSE );
-			if( status == EOK ) {
+	if( ( status = sd_app_send_op_cond( hc, 0, &ocr ) ) == EOK ) {
+		if( ( status = sdio_select_voltage( hc, ocr ) ) == EOK ) {
+			if( ( status = sd_init_device( hc, dev->ocr, SDIO_FALSE ) ) == EOK ) {
 				return( status );
 			}
 		}
 	}
-
+	
 	return( status );
 }
+
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/devb/sdmmc/sdiodi/sd.c $ $Rev: 896546 $")
+#endif

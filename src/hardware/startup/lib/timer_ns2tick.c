@@ -1,26 +1,6 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
- * Copyright 2008,2025, BlackBerry Limited.
+ * $QNXLicenseC:
+ * Copyright 2008, QNX Software Systems. 
  * 
  * Licensed under the Apache License, Version 2.0 (the "License"). You 
  * may not reproduce, modify or distribute this software except in 
@@ -43,19 +23,17 @@
 
 
 
-#include <startup.h>
+#include "startup.h"
 
 /*
 	Figure out how many timer ticks there will be in 'ns' nanoseconds.
 */
 unsigned long
 timer_ns2tick(unsigned long ns) {
-	const unsigned long ticks_2_ns = timer_tick2ns(1);
-	if(ticks_2_ns != 0)
-	{
-		return( ns / ticks_2_ns );
-	} else {
-		kprintf("timer_ns2tick: timer_tick2ns overflow!\n");
-		return 0xFFFFFFFF;
-	}
+	return( ns / timer_tick2ns(1) );
 }
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/startup/lib/timer_ns2tick.c $ $Rev: 680332 $")
+#endif

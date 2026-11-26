@@ -1,25 +1,4 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC:
  * Copyright 2014, QNX Software Systems.
  *
@@ -40,7 +19,7 @@
  * $
  */
 
-#include <startup.h>
+#include "startup.h"
 #include "aarch64/mmu.h"
 
 /*
@@ -84,7 +63,6 @@ unsigned	sctlr_el1 = AARCH64_SCTLR_EL1_RES1 |
 						AARCH64_SCTLR_EL1_C |
 						AARCH64_SCTLR_EL1_M;
 
-
 /*
  * Default value of TCR_EL1:
  * - 40 bit TTBR1 range (can be configured by nxfer_slots, default is 2 slots, which is 40 bit).
@@ -94,6 +72,7 @@ unsigned	sctlr_el1 = AARCH64_SCTLR_EL1_RES1 |
  *
  * init_mmu() sets ASID and PA size based on the cpu configuration.
  */
+int	nxfer_slots = 2;
 unsigned long	tcr_el1 = AARCH64_TCR_EL1_T0SZ(39) |
 						  AARCH64_TCR_EL1_TG1_4K |
 						  AARCH64_TCR_EL1_TG0_4K |
@@ -118,28 +97,31 @@ init_mmu(void)
 	paddr_t			start;
 	paddr_t			end;
 
+	if((nxfer_slots > 64 && (__page_size == 0x10000)) || (nxfer_slots > 256)) {
+		crash("Specified slots =%d, exceed max %d slots!!!\n", nxfer_slots, (__page_size == 0x10000) ? 64 : 256);
+	}
+
 	/*
-	 * Set TTBR1 bit range for two slots, one for the kernel and one for the
-	 * message passing window.
+	 *set TTBR1 bit range based on nxfer_slots setting.
+	 * we need at least one slot for xfer, and one slot for kernel.
 	 */
+	int nslots = sizeof(int) * 8 - __builtin_clz(nxfer_slots) - 1;
 	if (__PAGESIZE > 0x1000) { //64K page
 		/*
 		 * 64K page size.
-		 * T1SZ, bits [21:16], The region size is 2^(64-T1SZ) bytes, 42 bits per
-		 * slot, for a total of 43 bits to accommodate the two slots.
+		 * T1SZ, bits [21:16], The region size is 2^(64-T1SZ) bytes, 42 bits per slot.
 		 */
 		tcr_el1 &= ~(0x3f |(0x3ull << 30) | (0x3ull << 14));
 		tcr_el1 |= AARCH64_TCR_EL1_T0SZ(42)
-				| AARCH64_TCR_EL1_T1SZ(43)
-				| AARCH64_TCR_EL1_TG1_64K
-				| AARCH64_TCR_EL1_TG0_64K;
+				| AARCH64_TCR_EL1_T1SZ(nslots + 42)
+				|AARCH64_TCR_EL1_TG1_64K
+				|AARCH64_TCR_EL1_TG0_64K;
 	} else {
 		/*
 		 * default 4K page size.
-		 * T1SZ, bits [21:16], The region size is 2^(64-T1SZ) bytes, 39 bits per
-		 * slot, for a total of 40 bits to accommodate the two slots.
+		 * T1SZ, bits [21:16], The region size is 2^(64-T1SZ) bytes, 39 bits per slot.
 		 */
-		tcr_el1 |= AARCH64_TCR_EL1_T1SZ(40);
+		tcr_el1 |=  AARCH64_TCR_EL1_T1SZ(nslots + 39);
 	}
 
 	/*
@@ -161,9 +143,9 @@ init_mmu(void)
 	tcr_el1 |= AARCH64_TCR_EL1_SH1_ISH | AARCH64_TCR_EL1_SH0_ISH;
 
 	if (debug_flag) {
-		static int	par[] = { 32, 36, 40, 42, 44, 48, 52 };
+		static int	par[] = { 32, 36, 40, 42, 44, 48 };
 
-		kprintf("MMU: %d-bit ASID %d-bit PA TCR_EL1=%v\n",
+		kprintf("MMU: %d-bit ASID %d-bit PA TCR_EL1=%x\n",
 			MMFR0_ASIDBITS(mmfr0) ? 16 : 8,
 			par[MMFR0_PARANGE(mmfr0)],
 			tcr_el1);
@@ -181,3 +163,10 @@ init_mmu(void)
 	end   = ROUNDPG(full_image_paddr + shdr->startup_size);
 	aarch64_map(start, start, end-start, PROT_READ|PROT_WRITE|PROT_EXEC);
 }
+
+
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/startup/lib/aarch64/init_mmu.c $ $Rev: 931478 $")
+#endif

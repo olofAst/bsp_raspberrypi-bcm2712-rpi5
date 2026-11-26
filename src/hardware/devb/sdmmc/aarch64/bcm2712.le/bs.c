@@ -49,6 +49,8 @@
 #include <hw/inout.h>
 #include <sys/mman.h>
 #include <sys/types.h>
+#include <stdbool.h>
+#include <internal.h>
 #include <sdhci.h>
 
 /*
@@ -79,8 +81,8 @@ struct gpio_state_t {
 
 /* Structure describing board specific configuration */
 struct bcm2712_ext_t {
-    int32_t (*signal_voltage)(sdio_hc_t *hc, uint32_t signal_voltage);
-    int32_t (*sdhci_tune)(sdio_hc_t *hc, uint32_t op);
+    int (*signal_voltage)(sdio_hc_t *hc, int signal_voltage);
+    int (*sdhci_tune)(sdio_hc_t *hc, int op);
 };
 
 static int32_t bcm2712_bs_args(const sdio_hc_t * const hc, char *options)
@@ -179,12 +181,12 @@ static int32_t set_vdd_sd_io_state(sdio_hc_t * const hc, const uint32_t state)
  * This function is a variant of sdhci_signal_voltage, it calls rpi5 specific gpio APIs
  * to switch between 3.3v and 1.8v operation
  */
-static int32_t bcm2712_signal_voltage(sdio_hc_t *hc, uint32_t signal_voltage)
+static int bcm2712_signal_voltage(sdio_hc_t *hc, int signal_voltage)
 {
     const struct bcm2712_ext_t * const ext = (struct bcm2712_ext_t *)hc->bs_hdl;
     const int32_t gpio_sd_iovdd_sel_state = get_vdd_sd_io_state(hc);
 
-    if (signal_voltage == (uint32_t)SIGNAL_VOLTAGE_3_3) {
+    if (signal_voltage == SIGNAL_VOLTAGE_3_3) {
         if (gpio_sd_iovdd_sel_state != GPIO_SD_IOVDD_SEL_3_3V) {
             set_vdd_sd_io_state(hc, GPIO_SD_IOVDD_SEL_3_3V);
             (void)delay(5);
@@ -192,7 +194,7 @@ static int32_t bcm2712_signal_voltage(sdio_hc_t *hc, uint32_t signal_voltage)
             hc->signal_voltage = 0;
         }
     }
-    else if (signal_voltage == (uint32_t)SIGNAL_VOLTAGE_1_8) {
+    else if (signal_voltage == SIGNAL_VOLTAGE_1_8) {
         if (gpio_sd_iovdd_sel_state != GPIO_SD_IOVDD_SEL_1_8V) {
             set_vdd_sd_io_state(hc, GPIO_SD_IOVDD_SEL_1_8V);
             (void)delay(5);
@@ -206,7 +208,7 @@ static int32_t bcm2712_signal_voltage(sdio_hc_t *hc, uint32_t signal_voltage)
     return (ext->signal_voltage(hc, signal_voltage));
 }
 
-static int32_t bcm2712_sdhci_tune(sdio_hc_t *hc, uint32_t op)
+static int bcm2712_sdhci_tune(sdio_hc_t *hc, int op)
 {
     const struct bcm2712_ext_t * const ext = (struct bcm2712_ext_t *)hc->bs_hdl;
     int32_t ret;

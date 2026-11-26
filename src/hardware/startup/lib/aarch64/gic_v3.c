@@ -1,27 +1,6 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC:
- * Copyright 2011, 2021, 2025 BlackBerry Limited.
+ * Copyright 2011, 2021 QNX Software Systems.
  * Copyright 2016, Freescale Semiconductor, Inc.
  * Copyright 2017 NXP
  *
@@ -46,7 +25,6 @@
 #include <aarch64/gic_v3.h>
 #include <aarch64/gic.h>	/* startup specific */
 #include <aarch64/gic_v3.h>
-#include <stdbool.h>
 
 /*
  ===============================================================================
@@ -75,17 +53,12 @@ static struct _lpi_tbl_params_s *select_lpi_cfg_table(const unsigned cpu);
  ===============================================================================
  gic_v3_intr_ppi
  gic_v3_intr_spi
- gic_v3_intr_espi
 
- These are the 'struct startup_intrinfo' structures for PPIs and optionally SPIs and ESPIs
+ These are the 'struct startup_intrinfo' structures for PPIs and optionally SPIs
  The 'gic_v3_intr_ppi' structure will be unconditionally added to the system
  when gic_v3_initialize() is called. If no SPI entries have been added with
  calls to gic_v3_spi_add_entry() from the board specific init_intrinfo(), then
  the 'gic_v3_intr_spi' structure will also be added as the default SPI entry
- If no ESPI entries have been added with calls to gic_v3_espi_add_entry() from
- the board specific init_intrinfo() and the GIC has ESPI interrupts, then
- the 'gic_v3_intr_espi' structure will also be added as the default ESPI entry
-
 
 */
 static struct startup_intrinfo gic_v3_intr_ppi = {
@@ -109,7 +82,7 @@ static struct startup_intrinfo gic_v3_intr_ppi = {
  * gic_v3_spi_add_entry() has never been called */
 static struct startup_intrinfo gic_v3_intr_spi =
 {
-	.vector_base     = _NTO_INTR_CLASS_EXTERNAL + ARM_GIC_SPI_MIN_IRQ,
+	.vector_base     = _NTO_INTR_CLASS_EXTERNAL + 32,
 	.num_vectors     = 0, /* set up at runtime if required */
 	.cascade_vector  = _NTO_INTR_SPARE,
 	.cpu_intr_base   = 0,
@@ -119,24 +92,6 @@ static struct startup_intrinfo gic_v3_intr_spi =
 	.eoi             = { 0, 0, &interrupt_eoi_gic_v3_spi_sr },
 	.mask            = &interrupt_mask_gic_v3_spi,
 	.unmask          = &interrupt_unmask_gic_v3_spi,
-	.config          = NULL,
-	.patch_data      = NULL,	/* set up at runtime if required */
-};
-
-/* 'gic_v3_intr_espi' will be used to create a default entry if
- * gic_v3_espi_add_entry() has never been called */
-static struct startup_intrinfo gic_v3_intr_espi =
-{
-	.vector_base     = _NTO_INTR_CLASS_EXTERNAL + ARM_GIC_ESPI_MIN_IRQ,
-	.num_vectors     = 0, /* set up at runtime if required */
-	.cascade_vector  = _NTO_INTR_SPARE,
-	.cpu_intr_base   = 0,
-	.cpu_intr_stride = 0,
-	.flags           = 0,
-	.id              = { 0, 0, &interrupt_id_gic_v3_espi },
-	.eoi             = { 0, 0, &interrupt_eoi_gic_v3_spi_sr }, /* same EOI as SPIs */
-	.mask            = &interrupt_mask_gic_v3_espi,
-	.unmask          = &interrupt_unmask_gic_v3_espi,
 	.config          = NULL,
 	.patch_data      = NULL,	/* set up at runtime if required */
 };
@@ -155,14 +110,13 @@ static arm_gic_lpi_params_t lpi_params = ARM_GIC_LPI_PARAMS_DFLT_INIT(lpi_params
 /*
  ===============================================================================
  spi_intrinfo
- espi_intrinfo
  lpi_intrinfo
 
- These 3 structures are used to record the 'struct startup_intrinfo' entries for
- both SPI/ESPI and LPI interrupts.
- Because it is platform specific how the SPI/ESPI and (optional) LPI interrupt types
- will be used, the gic_v3_spi_add_entry(), gic_v3_espi_add_entry(), and gic_v3_lpi_add_entry()
- can be used to segment these interrupts into differentiated groups (based on the .flags
+ These 2 structures are used to record the 'struct startup_intrinfo' entries for
+ both SPI and LPI interrupts.
+ Because it is platform specific how the SPI and (optional) LPI interrupt types
+ will be used, the gic_v3_spi_add_entry() and gic_v3_lpi_add_entry() can be used
+ to segment these interrupts into differentiated groups (based on the .flags
  field for example) for different purposes
  As entries are added using these API's, they are recorded in these structures
  and then added to the system when gic_v3_initialize() is called
@@ -195,44 +149,6 @@ static struct
 	.co =
 	{
 		[0 ... (NUM_ELTS(spi_intrinfo.co) - 1)] =
-		{
-			.entry = NULL,
-			.patch_data =
-			{
-				.gicc_base_vaddr = 0,
-				.gicd_base_vaddr = 0,
-				.vec_off = 0,
-			},
-		},
-	},
-};
-static struct
-{
-	unsigned num_entries;
-	struct
-	{
-		struct startup_intrinfo *entry;
-
-		/*
-		 * the order of fields in this structure must coincide with the patcher(s)
-		 * Note that for ESPIs, 'gicc_patch' is used for the memory mapped EOI callout
-		 * otherwise it is not used. The GICD base vaddr and vector offset fields
-		 * are always used by the ESPI mask/unmask callouts so that ESPI patch data
-		 * therefore needs to include all 3 values
-		 */
-		struct __attribute__((packed,aligned(8)))
-		{
-			_Uint64t gicc_base_vaddr;
-			_Uint64t gicd_base_vaddr;
-			_Uint32t vec_off;
-		} patch_data;
-	} co[16];
-} espi_intrinfo =
-{
-	.num_entries = 0,
-	.co =
-	{
-		[0 ... (NUM_ELTS(espi_intrinfo.co) - 1)] =
 		{
 			.entry = NULL,
 			.patch_data =
@@ -329,15 +245,16 @@ static paddr_t gicd_paddr_base = NULL_PADDR;
 static paddr_t gicr_paddr_base = NULL_PADDR;
 static paddr_t gicc_paddr_base = NULL_PADDR;
 static unsigned gicr_offset_shift_val = 0;
-static unsigned gicr_index_limit;
 
 /*
- *===============================================================================
- * arm_gic_id
- *
- * GIC identification information
- *
- */
+ ===============================================================================
+ arm_gic_id
+
+ GIC identification information
+
+ TODO : move to common GIC code
+
+*/
 static arm_gic_id_t arm_gic_id =
 {
 	.arch_version = {.major = UINT8_MAX, .minor = UINT8_MAX},	/* undefined */
@@ -380,7 +297,7 @@ static unsigned base_addresses_initialized = 0;
  * additional instances can be set with gic_v3_its_set_paddr()
  *
  */
-void gic_v3_set_paddr_range(const paddr_t gicd, const paddr_t gicr, size_t gicr_size, const paddr_t gits)
+void gic_v3_set_paddr(const paddr_t gicd, const paddr_t gicr, const paddr_t gits)
 {
 	ASSERT(base_addresses_initialized == 0);
 
@@ -409,19 +326,8 @@ void gic_v3_set_paddr_range(const paddr_t gicd, const paddr_t gicr, size_t gicr_
 	if (ARM_GIC_ARCH_VERSION_IS(gic_get_arch_version()) >= ARM_GIC_ARCH_VERSION_4_0) ++gicr_offset_shift_val;
 
 	const unsigned max_cpu = board_smp_num_cpu();
-    if (gicr_size == 0) {
-	    gicr_size = (1u << gicr_offset_shift_val) * max_cpu;
-        gicr_index_limit = max_cpu;
-    } else {
-        gicr_index_limit = gicr_size >> gicr_offset_shift_val;
-    }
+	const size_t gicr_size = (1u << gicr_offset_shift_val) * max_cpu;
 	as_add64(gicr_paddr_base, gicr_paddr_base + gicr_size - 1, AS_ATTR_DEV, "gicr", off);
-}
-
-void
-gic_v3_set_paddr(paddr_t const gicd, paddr_t const gicr, paddr_t const gits)
-{
-    gic_v3_set_paddr_range(gicd, gicr, 0, gits);
 }
 
 /**
@@ -434,7 +340,7 @@ gic_v3_set_paddr(paddr_t const gicd, paddr_t const gicr, paddr_t const gits)
  * For convenience, there are macros in aarchh64/gic.h that will allow for easy
  * major/minor version checks. See ARM_GIC_ARCH_VERSION_IS() in aarch64/gic.h
  *
- * 
+ * TODO: move to common GIC code
  *
  */
 arm_gic_version_t gic_get_arch_version(void)
@@ -455,6 +361,9 @@ arm_gic_version_t gic_get_impl_version(void)
  * Get the GIC implementation product id
  *
  * This function returns the ProductID for the GIC implementation
+ *
+ * TODO: move to common GIC code
+ *
  */
 int gic_get_impl_productid(void)
 {
@@ -474,7 +383,9 @@ int gic_get_impl_productid(void)
  *                string can be returned. Ignored if NULL
  *
  * For convenience, there are macros in aarchh64/gic.h that will allow for easy
- * implementation checks. See ARM_GIC_IMPL_ID_IS() in aarch64/gic.h 
+ * implementation checks. See ARM_GIC_IMPL_ID_IS() in aarch64/gic.h
+ *
+ * TODO: move to common GIC code
  *
  */
 arm_gic_id_t gic_get_impl_id(const char **id_str)
@@ -483,105 +394,52 @@ arm_gic_id_t gic_get_impl_id(const char **id_str)
 
 	if (id_str != NULL)
 	{
-		/* if the caller wants it, assemble a user friendly ID string. */
-		bool use_ae = false;
+		/* if the caller wants it, assemble a user friendly ID string. Do it once */
+		static unsigned init_done = 0;
 		static char gic_id_str[] = "GIC-000 rmpn";
-		static char gicae_id_str[] = "GIC-000AE rmpn";
-		int revision_adjust = 0; /* for mapping implementation specific value to pm */
-
-		switch (GIC_IMPL_ID_IS(arm_gic_id))
+		if (init_done == 0)
 		{
-			case ARM_GIC_500_r0p0:
-			case ARM_GIC_500_r0p1:
-			case ARM_GIC_500_r1p0:
-			case ARM_GIC_500_r1p1:
+			int revision_adjust = 0; /* for mapping implementation specific value to pm */
+
+			switch (GIC_IMPL_ID_IS(arm_gic_id))
 			{
-				gic_id_str[4] = '5';
-				gic_id_str[9] = arm_gic_id.implementation.version.major + '0';
-				gic_id_str[11] = arm_gic_id.implementation.version.minor + '0';
-				break;
-			}
-			case ARM_GIC_600_r0p0:
-			case ARM_GIC_600_r1p6:
-				revision_adjust -= 1;
-				/* FALLTHRU */
-			case ARM_GIC_600_r0p1:
-			case ARM_GIC_600_r0p2:
-			case ARM_GIC_600_r0p3:
-			case ARM_GIC_600_r1p2:
-			case ARM_GIC_600_r1p3:
-			case ARM_GIC_600_r1p4:
-			{
-				revision_adjust += 2;
-				gic_id_str[4] = '6';
-				gic_id_str[9] = arm_gic_id.implementation.version.major + '0';
-				ASSERT(revision_adjust >= 1);
-				gic_id_str[11] = (arm_gic_id.implementation.version.minor - revision_adjust) + '0';
-				break;
-			}
-			case ARM_GIC_600AE_r0p0:
-				revision_adjust -= 1;
-				/* FALLTHRU */
-			case ARM_GIC_600AE_r0p1:
-			case ARM_GIC_600AE_r0p2:
-			case ARM_GIC_600AE_r0p3:
-			{
-				revision_adjust += 2;
-				use_ae = true;
-				gicae_id_str[4] = '6';
-				gicae_id_str[11] = arm_gic_id.implementation.version.major + '0';
-				ASSERT(revision_adjust >= 1);
-				gicae_id_str[13] = (arm_gic_id.implementation.version.minor - revision_adjust) + '0';
-				break;
-			}
-			case ARM_GIC_V3_720AE_r0p0:
-			case ARM_GIC_V3_720AE_r0p1:
-			case ARM_GIC_V3_720AE_r1p0:
-			case ARM_GIC_V3_720AE_r2p0:
-			case ARM_GIC_V3_720AE_r2p1:
-			case ARM_GIC_V4_720AE_r0p0:
-			case ARM_GIC_V4_720AE_r0p1:
-			case ARM_GIC_V4_720AE_r1p0:
-			case ARM_GIC_V4_720AE_r2p0:
-			case ARM_GIC_V4_720AE_r2p1:
-				use_ae = true;
-				gicae_id_str[5] = '2';
-				/* FALLTHRU */
-			case ARM_GIC_V3_700_r0p0:
-			case ARM_GIC_V3_700_r0p1:
-			case ARM_GIC_V3_700_r1p0:
-			case ARM_GIC_V3_700_r2p0:
-			case ARM_GIC_V3_700_r2p1:
-			case ARM_GIC_V4_700_r0p0:
-			case ARM_GIC_V4_700_r0p1:
-			case ARM_GIC_V4_700_r1p0:
-			case ARM_GIC_V4_700_r2p0:
-			case ARM_GIC_V4_700_r2p1:
-			{
-				if (use_ae) {
-					gicae_id_str[4] = '7';
-					gicae_id_str[11] = arm_gic_id.implementation.version.major + '0';
-					gicae_id_str[13] = arm_gic_id.implementation.version.minor + '0';
-				} else {
-					gic_id_str[4] = '7';
+				case ARM_GIC_500_r0p0:
+				case ARM_GIC_500_r0p1:
+				case ARM_GIC_500_r1p0:
+				case ARM_GIC_500_r1p1:
+				{
+					gic_id_str[4] = '5';
 					gic_id_str[9] = arm_gic_id.implementation.version.major + '0';
 					gic_id_str[11] = arm_gic_id.implementation.version.minor + '0';
+					break;
 				}
-				break;
+				case ARM_GIC_600_r0p0:
+				case ARM_GIC_600_r1p6:
+					revision_adjust -= 1;
+					/* FALLTHRU */
+				case ARM_GIC_600_r0p1:
+				case ARM_GIC_600_r0p2:
+				case ARM_GIC_600_r0p3:
+				case ARM_GIC_600_r1p2:
+				case ARM_GIC_600_r1p3:
+				case ARM_GIC_600_r1p4:
+				{
+					revision_adjust += 2;
+					gic_id_str[4] = '6';
+					gic_id_str[9] = arm_gic_id.implementation.version.major + '0';
+					ASSERT(revision_adjust >= 1);
+					gic_id_str[11] = (arm_gic_id.implementation.version.minor - revision_adjust) + '0';
+					break;
+				}
+				default:
+					gic_id_str[4] = '?';
+					gic_id_str[9] = arm_gic_id.implementation.version.major + '0';
+					gic_id_str[11] = arm_gic_id.implementation.version.minor + '0';
+					break;
 			}
-
-			default:
-				gic_id_str[4] = '?';
-				gic_id_str[9] = arm_gic_id.implementation.version.major + '0';
-				gic_id_str[11] = arm_gic_id.implementation.version.minor + '0';
-				break;
+			init_done = 1;
 		}
-		if(use_ae) {
-			*id_str = gicae_id_str;
-		} else {
-			*id_str = gic_id_str;
-		}
-
+		*id_str = gic_id_str;
 	}
 	ASSERT(sizeof(arm_gic_id) == 8);
 	return arm_gic_id;
@@ -646,32 +504,9 @@ unsigned gic_v3_num_spis(void)
 	/*
 	 * ((ITLines + 1) * 32) - 1 represents the highest SPI INTID.
 	 * The first 32 INTIDs are not SPIs, therefore the number of SPIs is
-	 * less the above calculation by 32.  INTIDs >= 1020 are reserved so
-	 * clip at that value - 1.
+	 * less the above calculation by 32
 	 */
-	if(((ITLines + 1U) * 32U) > (ARM_GIC_SPI_MAX_IRQ + 1U))
-	{
-		return (ARM_GIC_SPI_MAX_IRQ + 1U) - 32U;
-	}
-	return ITLines * 32U;
-}
-
-/**
- * ============================================================================
- * Return the number of ESPIs supported by the GIC
- */
-uint32_t gic_v3_num_espis(void)
-{
-	uint32_t ret = 0;
-	ASSERT(base_addresses_initialized != 0U);
-
-	const uint32_t gicd_typer = in32(gicd_paddr_base + ARM_GICD_TYPER);
-
-	if((gicd_typer & GICD_TYPER_ESPI) != 0U) {
-		ret = (32U * (((gicd_typer & GICD_TYPER_ESPI_RANGE) >> GICD_TYPER_ESPI_RANGE_S) + 1U));
-	}
-
-	return ret;
+	return ITLines * 32;
 }
 
 /**
@@ -688,7 +523,7 @@ unsigned gic_v3_num_lpis(void)
 
 	if ((gicd_typer & GICD_TYPER_LPIS) == 0) nlpi = 0;	/* not supported */
 	/* if num_LPI bits is 0, get from IDbits */
-	else if (nlpi == 0) nlpi = ((_Uint32t)1 << (((gicd_typer >> 19) & 0x1f) + 1)) - ARM_GIC_LPI_MIN_IRQ;
+	else if (nlpi == 0) nlpi = ((_Uint32t)1 << (((gicd_typer >> 19) & 0x1f) + 1)) - 8192;
 	/* otherwise 'nlpi is actually num_LPI bits so convert to want we want */
 	else nlpi = (_Uint32t)1 << (nlpi + 1);
 
@@ -697,7 +532,7 @@ unsigned gic_v3_num_lpis(void)
 
 /**
  * ============================================================================
- * Set GIC SPI/ESPI interrupt trigger mode
+ * Set GIC SPI interrupt trigger mode
  *
  * @param irq   Interrupt vector number.
  * @param edge  !0: edge-triggered, 0: level-triggered
@@ -705,11 +540,9 @@ unsigned gic_v3_num_lpis(void)
  */
 void gic_v3_set_intr_trig_mode(const unsigned irq, const unsigned edge)
 {
-	const uint32_t num_spis = gic_v3_num_spis();
-	const uint32_t num_espis = gic_v3_num_espis();
 	ASSERT(base_addresses_initialized != 0);
 
-	if ((irq >= ARM_GIC_SPI_MIN_IRQ) && (irq < (num_spis + ARM_GIC_SPI_MIN_IRQ)))
+	if ((irq >= 32) && (irq < gic_v3_num_spis() + 32))
 	{
 		const _Uint32t mask = 0x2 << ((irq % 16) * 2);
 		const _Uint32t off  = (irq / 16) * 4;
@@ -725,36 +558,12 @@ void gic_v3_set_intr_trig_mode(const unsigned irq, const unsigned edge)
 
 		if (debug_flag > 4)
 		{
-			kprintf("%s(%u, %s) @ ICFG<%u> [0x%x]: 0x%x -> 0x%x\n", __func__,
+			kprintf("%s(%u, %s) @ ICFG<%u> [0x%x]: 0x%x -> 0x%x\n", __FUNCTION__,
 					irq, (edge != 0) ? "edge" : "level",
 					irq / 16, gicd_paddr_base + ARM_GICD_ICFGRn + off, cur_val, val);
 		}
 	}
-	else if ((irq >= ARM_GIC_ESPI_MIN_IRQ) && (irq < (num_espis + ARM_GIC_ESPI_MIN_IRQ)))
-	{
-		const _Uint32t mask = 0x2 << ((irq % 16) * 2);
-		const _Uint32t off  = ((irq - ARM_GIC_ESPI_MIN_IRQ) / 16) * 4;
-
-		const _Uint32t cur_val = in32(gicd_paddr_base + ARM_GICD_ICFGRnE + off);
-		_Uint32t val = cur_val;
-
-		if (edge != 0) val |=  mask;
-		else val &= ~mask;
-
-		out32(gicd_paddr_base + ARM_GICD_ICFGRnE + off, val);
-		wait_for_rwp(gicd_paddr_base + ARM_GICD_CTLR, 0x80000000);
-
-		if (debug_flag > 4)
-		{
-			kprintf("%s(%u, %s) @ ICFG<%u>E [0x%x]: 0x%x -> 0x%x\n", __func__,
-					irq, (edge != 0) ? "edge" : "level",
-					irq / 16, gicd_paddr_base + ARM_GICD_ICFGRnE + off, cur_val, val);
-		}
-	}
-	else
-	{
-		kprintf("%s(%u, %s) invalid\n", __func__, irq, (edge != 0) ? "edge" : "level");
-	}
+	else kprintf("%s(%u, %s) invalid\n", __FUNCTION__, irq, (edge != 0) ? "edge" : "level");
 }
 
 /**
@@ -813,15 +622,18 @@ int gic_v3_spi_add_entry(struct startup_intrinfo * const spi_entry)
 {
 	ASSERT(base_addresses_initialized != 0);
 	ASSERT(spi_intrinfo.num_entries < NUM_ELTS(spi_intrinfo.co));
-	/* do range checking for normal (v3) */
-	ASSERT((spi_entry->vector_base >= ARM_GIC_SPI_MIN_IRQ) && (spi_entry->vector_base <= ARM_GIC_SPI_MAX_IRQ));
-	ASSERT((spi_entry->vector_base + spi_entry->num_vectors)  <= (gic_v3_num_spis() + ARM_GIC_SPI_MIN_IRQ));
+	/* do range checking for both normal (v3) and extended (v3.1) */
+	ASSERT(
+		((spi_entry->vector_base >= 32) && (spi_entry->vector_base <= 1019)) ||
+		((spi_entry->vector_base >= 4096) && (spi_entry->vector_base <= 5119))
+	);
+	ASSERT(spi_entry->num_vectors <= gic_v3_num_spis());
 
 	int r = 0;
 	const unsigned new_start = spi_entry->vector_base;
 	const unsigned new_last = new_start + spi_entry->num_vectors - 1;
 
-	if (new_last >= (gic_v3_num_spis() + ARM_GIC_SPI_MIN_IRQ)) r = -1;
+	if (new_last >= (gic_v3_num_spis() + 32)) r = -1;
 	else
 	{
 		if ((spi_entry->flags & INTR_FLAG_MSI) != 0)
@@ -916,174 +728,8 @@ int gic_v3_spi_add_entry(struct startup_intrinfo * const spi_entry)
 	{
 		kprintf("Add SPI entry %u for vectors %u -> %u [SPI max: %u], %s\n",
 				spi_intrinfo.num_entries - ((r == 0) ? 1 : 0),
-				spi_entry->vector_base, spi_entry->vector_base + spi_entry->num_vectors - 1U,
+				spi_entry->vector_base, spi_entry->vector_base + spi_entry->num_vectors - 1,
 				gic_v3_num_spis(), (r == 0) ? "Ok" : "Failed");
-	}
-	return r;
-}
-
-/**
- * ============================================================================
- * Add a struct startup_intrinfo entry for ESPIs
- *
- * NOTE: This function must be called before gic_v3_initialize() if you want to
- * configure ESPIs in a non-default fashion, for example to assign some of them
- * for use as PCI MSIs
- *
- * @param espi_entry  Pointer to the 'struct startup_intrinfo' entry to add.
- *                   Must be declared static
- *
- * Returns 0 on success or -1 on any error
- *
- * The <espi_entry> passed to this function must have the following fields
- * properly initialized
- *
- *	.vector_base
- *	.num_vectors
- *	.flags
- *
- * Other fields will be established based on the specifics of the GIC hardware.
- * If the fields above are invalid or there are any inconsistencies with any
- * previously added entries, -1 will be returned
- *
- * Enough entries should be added to account for all supported ESPIs
- *
- * Any entries which are successfully added and which have the INTR_FLAG_MSI
- * flag set in the .flags field of the entry, will be set for edge triggered
- * operation when gic_v3_initialize() is called
- *
- */
-int32_t gic_v3_espi_add_entry(struct startup_intrinfo * const espi_entry)
-{
-	ASSERT(base_addresses_initialized != 0U);
-	ASSERT(espi_intrinfo.num_entries < NUM_ELTS(espi_intrinfo.co));
-	/* do range checking for extended (v3.1) */
-	ASSERT((espi_entry->vector_base >= ARM_GIC_ESPI_MIN_IRQ) && (espi_entry->vector_base <= ARM_GIC_ESPI_MAX_IRQ));
-	ASSERT((espi_entry->vector_base + espi_entry->num_vectors)  <= (gic_v3_num_espis() + ARM_GIC_ESPI_MIN_IRQ));
-
-	int r = 0;
-	const unsigned new_start = espi_entry->vector_base;
-	const unsigned new_last = new_start + espi_entry->num_vectors - 1U;
-
-	if (gic_v3_num_espis() == 0U)
-	{
-		r = -1;
-	}
-	else if (new_last >= (gic_v3_num_espis() + ARM_GIC_ESPI_MIN_IRQ))
-	{
-		r = -1;
-	}
-	else
-	{
-		if ((espi_entry->flags & INTR_FLAG_MSI) != 0U)
-		{
-			/* make sure Message based SPIs/ESPIs are supported */
-			const _Uint32t gicd_typer = in32(gicd_paddr_base + ARM_GICD_TYPER);
-			if ((gicd_typer & GICD_TYPER_MBIS) == 0U)
-			{
-				if (debug_flag > 3)
-				{
-					kprintf("Message based ESPIs are not supported\n");
-				}
-				r = -1;
-			}
-		}
-		if (r == 0)
-		{
-			/*
-			 * check for an overlap with existing entries
-			 * IMPORTANT
-			 * we'll also check to make sure that the entry being added has vectors
-			 * numerically larger than those previously added. There is an as yet
-			 * to be determined issue if the entries are not added in this way. While
-			 * the vectors are all in the syspage and get allocated to the requester
-			 * properly, no interrupts will occur for the out of order entries. This
-			 * appears to be a procnto problem because the correct bits are getting
-			 * masked/unmasked and it is only the order of adding entries, and not
-			 * anything to do with the vectors in the entries that makes a difference.
-			 * The patched callouts also look fine
-			 */
-			unsigned i;
-			for (i=0; i<espi_intrinfo.num_entries; i++)
-			{
-				const struct startup_intrinfo * const cur_espi_entry = espi_intrinfo.co[i].entry;
-				ASSERT(cur_espi_entry != NULL);
-				const unsigned cur_start = cur_espi_entry->vector_base;
-				const unsigned cur_last = cur_start + cur_espi_entry->num_vectors - 1U;
-				bool break_loop = false;
-
-				if ((new_start >= cur_start) && (new_start <= cur_last))
-				{
-					if (debug_flag > 3)
-					{
-						kprintf("start overlap: new_start: %u, cur_start: %u, cur_last: %u\n",
-								new_start, cur_start, cur_last);
-					}
-					break_loop =true;
-				}
-				else if ((new_last >= cur_start) && (new_last <= cur_last))
-				{
-					if (debug_flag > 3)
-					{
-						kprintf("end overlap: new_last: %u, cur_start: %u, cur_last: %u\n",
-								new_last, cur_start, cur_last);
-					}
-					break_loop =true;
-				}
-				/*
-				 * check for an out-of-order entry as described above. Note that we
-				 * don't necessarily care that the entries are contiguous, just that
-				 * they are in increasing order
-				 */
-				else if (new_start <= cur_last)
-				{
-					if (debug_flag > 3)
-					{
-						kprintf("out-of-order: new_last: %u, cur_last: %u\n",
-								new_last, cur_last);
-					}
-					break_loop =true;
-				}
-				else
-				{
-					/* Fallthrough */
-				}
-				if (break_loop)
-				{
-					break;
-				}
-			}
-			if (i != espi_intrinfo.num_entries)
-			{
-				r = -1;
-			}
-			else
-			{
-				espi_entry->cascade_vector = _NTO_INTR_SPARE;
-				espi_entry->cpu_intr_base = 0;
-				espi_entry->cpu_intr_stride = 0;
-				espi_entry->id.genflags = 0;
-				espi_entry->id.size = 0;
-				espi_entry->id.rtn = &interrupt_id_gic_v3_espi;
-				espi_entry->eoi.genflags = 0;
-				espi_entry->eoi.size = 0;
-				espi_entry->eoi.rtn = &interrupt_eoi_gic_v3_spi_sr; /* same EOI as SPIs */
-				espi_entry->mask = &interrupt_mask_gic_v3_espi;
-				espi_entry->unmask = &interrupt_unmask_gic_v3_espi;
-				/* don't touch the config or local_stride fields. The patch_data will
-				 * be established in gic_v3_initialize() */
-
-				espi_intrinfo.co[espi_intrinfo.num_entries].entry = espi_entry;
-				++espi_intrinfo.num_entries;
-			}
-		}
-	}
-	if (debug_flag > 2)
-	{
-		kprintf("Add ESPI entry %u for vectors %u -> %u [ESPI max: %u], %s\n",
-				espi_intrinfo.num_entries - ((r == 0) ? 1U : 0U),
-				espi_entry->vector_base, espi_entry->vector_base + espi_entry->num_vectors - 1U,
-				gic_v3_num_espis(), (r == 0) ? "Ok" : "Failed");
 	}
 	return r;
 }
@@ -1116,14 +762,14 @@ int gic_v3_lpi_add_entry(struct startup_intrinfo * const lpi_entry)
 {
 	ASSERT(base_addresses_initialized != 0);
 	ASSERT(lpi_intrinfo.num_entries < NUM_ELTS(lpi_intrinfo.co));
-	ASSERT(lpi_entry->vector_base >= ARM_GIC_LPI_MIN_IRQ);
-	ASSERT((lpi_entry->vector_base+lpi_entry->num_vectors-ARM_GIC_LPI_MIN_IRQ) <= gic_v3_num_lpis());
+	ASSERT(lpi_entry->vector_base >= 8192);
+	ASSERT(lpi_entry->num_vectors <= gic_v3_num_lpis());
 
 	int r = 0;
 	const unsigned new_start = lpi_entry->vector_base;
 	const unsigned new_last = new_start + lpi_entry->num_vectors - 1;
 
-	if (new_last >= (gic_v3_num_lpis() + ARM_GIC_LPI_MIN_IRQ)) r = -1;
+	if (new_last >= (gic_v3_num_lpis() + 8192)) r = -1;
 	else
 	{
 		/* check for an overlap with existing entries
@@ -1296,7 +942,7 @@ void gic_v3_initialize(void)
 	 */
 	if ((use_memory_mapped_callouts == 0) && ((aa64_sr_rd64(id_aa64pfr0_el1) & ((_Uint64t)0xF << 24)) == 0))
 	{
-		kprintf("%s(), setting 'use_memory_mapped_callouts'\n", __func__);
+		kprintf("%s(), setting 'use_memory_mapped_callouts'\n", __FUNCTION__);
 		use_memory_mapped_callouts = 1;
 	}
 	/*
@@ -1322,19 +968,24 @@ void gic_v3_initialize(void)
 	struct aarch64_gic_map_entry * const gic_map = lsp.cpu.aarch64_gic_map.p;
 	for (unsigned i=0; i<max_cpu; i++)
 	{
-		gic_map->gic_cpu[i] = ~0ul;
+		gic_map->gic_cpu[i] = ~0u;
 	}
 
 	/* Disable distributor */
 	out32(gicd_paddr_base + ARM_GICD_CTLR, 0);
 	wait_for_rwp(gicd_paddr_base + ARM_GICD_CTLR, 0x80000000);
 
-	/* get the number of SPI interrupt lines and calculate the max INTID */
-	const _Uint32t gicd_typer = in32(gicd_paddr_base + ARM_GICD_TYPER);
-	const unsigned itlines = ((gicd_typer & ARM_GICD_TYPER_ITLN) + 1U);
-	const unsigned itn = ((itlines * 32U) > (ARM_GIC_SPI_MAX_IRQ + 1U)) ? (ARM_GIC_SPI_MAX_IRQ + 1U) : (itlines * 32U);
+	/*
+	 * TODO - in none of the initializations below are we dealing with the
+	 * extended PPIs and SPIs available in GIC v3.1 because at the time of
+	 * writing, a 3.1 GIC was not available to test on
+	 */
 
-	if (debug_flag > 2) kprintf("GICv3: gicd_typer 0x%x\n", gicd_typer);
+	/* get the number of interrupt lines and calculate the max INTID */
+	const _Uint32t gicd_typer = in32(gicd_paddr_base + ARM_GICD_TYPER);
+	const unsigned itlines = ((gicd_typer & ARM_GICD_TYPER_ITLN) + 1);
+	const unsigned itn = itlines * 32;
+
 	if (debug_flag > 1) kprintf("GICv3: itlines: %u, max INTID: %d\n", itlines, itn - 1);
 
 	/*
@@ -1352,6 +1003,12 @@ void gic_v3_initialize(void)
 		out32(gicd_paddr_base + ARM_GICD_IGROUPRn + reg_offset, 0xFFFFFFFF);
 		/* SPI interrupts are in Group1NS */
 		out32(gicd_paddr_base + ARM_GICD_IGRPMODRn + reg_offset, 0x00000000);
+/*
+kprintf("writing GICD_ICENABLER/ICPENDR/IGROUPR/IGRPMODERn<%u> @ 0x%P/%P/%P/%P\n",
+			reg_idx, gicd_paddr_base + ARM_GICD_ICENABLERn + reg_offset,
+			gicd_paddr_base + ARM_GICD_ICPENDRn + reg_offset, gicd_paddr_base + ARM_GICD_IGROUPRn + reg_offset,
+			gicd_paddr_base + ARM_GICD_IGRPMODRn + reg_offset);
+*/
 	}
 
 	/*
@@ -1361,8 +1018,11 @@ void gic_v3_initialize(void)
 	 */
 	for (unsigned reg_idx=8; reg_idx<(8*itlines); reg_idx++)
 	{
-		const unsigned reg_offset = reg_idx * sizeof(_Uint32t);	/* 32 bit register */ 
+		const unsigned reg_offset = reg_idx * sizeof(_Uint32t);	/* 32 bit register */
+		/* TODO - take default priority from parameters ? */
 		out32(gicd_paddr_base + ARM_GICD_IPRIORITYn + reg_offset, 0xA0A0A0A0);
+
+//kprintf("writing GICD_IPRIORITYn<%u> @ 0x%P\n", reg_idx, gicd_paddr_base + ARM_GICD_IPRIORITYn + reg_offset);
 	}
 
 	/*
@@ -1376,49 +1036,8 @@ void gic_v3_initialize(void)
 	{
 		const unsigned reg_offset = reg_idx * sizeof(_Uint32t);	/* 32 bit register */
 		out32(gicd_paddr_base + ARM_GICD_ICFGRn + reg_offset, 0);
-	}
-	wait_for_rwp(gicd_paddr_base + ARM_GICD_CTLR, 0x80000000);
-	
-	/* get the number of ESPI interrupt lines and INTIDs */
-	const unsigned espilines = ((gicd_typer & GICD_TYPER_ESPI) == 0) ? 0 : (((gicd_typer & GICD_TYPER_ESPI_RANGE) >> GICD_TYPER_ESPI_RANGE_S) + 1U);
-	const unsigned espin = (32U * espilines);
 
-	if ((debug_flag > 1) && (espin > 0U))
-	{
-		kprintf("GICv3: espilines: %u, max INTID: %d\n", espilines, espin + ARM_GIC_ESPI_MIN_IRQ - 1U);
-	}
-
-	/*
-	 * Disable all ESPI interrupts and clear pending state
-	 * There are 32 INTIDs per register
-	 */
-	for (unsigned reg_idx=0; reg_idx<espilines; reg_idx++)
-	{
-		const unsigned reg_offset = reg_idx * sizeof(_Uint32t);	/* 32 bit register */
-		out32(gicd_paddr_base + ARM_GICD_ICENABLERnE + reg_offset, 0xFFFFFFFF);
-		out32(gicd_paddr_base + ARM_GICD_ICPENDRnE + reg_offset, 0xFFFFFFFF);
-		/* ESPI interrupts are in Group1NS */
-		out32(gicd_paddr_base + ARM_GICD_IGRPMODRnE + reg_offset, 0x00000000);
-	}
-
-	/*
-	 * Set default priority of all ESPI interrupts to 0xA0.
-	 */
-	for (unsigned reg_idx=0; reg_idx<(8U*espilines); reg_idx++)
-	{
-		const unsigned reg_offset = reg_idx * sizeof(_Uint32t);	/* 32 bit register */
-		out32(gicd_paddr_base + ARM_GICD_IPRIORITYnE + reg_offset, 0xA0A0A0A0);
-	}
-
-	/*
-	 * Default all interrupts as level triggered. Modifications will be done as
-	 * required for MSIs
-	 * There are 16 INTIDs per register
-	 */
-	for (unsigned reg_idx=0; reg_idx<(espin/16U); reg_idx++)
-	{
-		const unsigned reg_offset = reg_idx * sizeof(_Uint32t);	/* 32 bit register */
-		out32(gicd_paddr_base + ARM_GICD_ICFGRnE + reg_offset, 0);
+//kprintf("writing GICD_ICFGR<%u> @ 0x%P\n", reg_idx, gicd_paddr_base + ARM_GICD_ICFGRn + reg_offset);
 	}
 	wait_for_rwp(gicd_paddr_base + ARM_GICD_CTLR, 0x80000000);
 
@@ -1444,37 +1063,29 @@ void gic_v3_initialize(void)
 	}
 	wait_for_rwp(gicd_paddr_base + ARM_GICD_CTLR, 0x80000000);
 
-	// Only get the AffX fields from MPIDR, clear Interrupt Routing Mode.
-	const _Uint64t affinity = aa64_sr_rd64(mpidr_el1) & 0xff00fffffful;
-
 	/*
-	 * Route all SPI INTIDs to the current CPU, assumed to be CPU0
+	 * Route all SPI INTIDs to cpu0 (affinity 0.0.0.0)
 	 * Must be done after ARE is set
 	 * There is one register per INTID
 	 */
-	for (unsigned reg_idx=ARM_GIC_SPI_MIN_IRQ; reg_idx<itn; reg_idx++)
+	for (unsigned reg_idx=32; reg_idx<itn; reg_idx++)
 	{
+		/* TODO - take default routing from parameters ? */
+		const _Uint64t affinity = ((_Uint64t)0 << 32) |
+								  ((_Uint64t)0 << 16) |
+								  ((_Uint64t)0 << 8) |
+								  ((_Uint64t)0 << 0);
 		const unsigned reg_offset = reg_idx * sizeof(_Uint64t);	/* 64 bit register */
 		out64(gicd_paddr_base + ARM_GICD_IROUTERn + reg_offset, affinity);
-	}
 
-	/*
-	 * Route all ESPI INTIDs to the current CPU, assumed to be CPU0
-	 * Must be done after ARE is set
-	 * There is one register per INTID
-	 */
-	for (unsigned reg_idx=0; reg_idx<espin; reg_idx++)
-	{
-		const unsigned reg_offset = reg_idx * sizeof(_Uint64t);	/* 64 bit register */
-		out64(gicd_paddr_base + ARM_GICD_IROUTERnE + reg_offset, affinity);
-		dsb();
+//kprintf("writing GICD_IROUTER<%u> @ 0x%P\n", reg_idx, gicd_paddr_base + ARM_GICD_IROUTERn + reg_offset);
 	}
 
 	/* map memory needed in the callouts */
 	const _Uintptrt gicd_vaddr_base = callout_io_map(0x10000, gicd_paddr_base);
 	if (debug_flag > 1) kprintf("GICD @ %L mapped to %L\n", gicd_paddr_base, gicd_vaddr_base);
 
-	const size_t gicr_size = (1u << gicr_offset_shift_val) * gicr_index_limit;
+	const size_t gicr_size = (1u << gicr_offset_shift_val) * max_cpu;
 	const _Uintptrt gicr_vaddr_base = callout_io_map(gicr_size, gicr_paddr_base);
 	if (debug_flag > 1) kprintf("GICR @ %L mapped to %L\n", gicr_paddr_base, gicr_vaddr_base);
 	/* IMPORTANT: 'gic_gicr_vaddr' is still used for the IPI callout so need to set it here */
@@ -1515,8 +1126,8 @@ void gic_v3_initialize(void)
 	add_interrupt(&gic_v3_intr_ppi);
 
 	/*
-	 * The SPI, ESPI, and LPI callouts MUST be added after the PPI callouts as the
-	 * id callouts for SPI/ESPI/LPI depend on it
+	 * The SPI and LPI callouts MUST be added after the PPI callouts as the
+	 * id callouts for SPI/LPI depend on it
 	 */
 	if (spi_intrinfo.num_entries == 0)
 	{
@@ -1533,7 +1144,7 @@ void gic_v3_initialize(void)
 	for (unsigned i=0; i<spi_intrinfo.num_entries; i++)
 	{
 		struct startup_intrinfo * const intrinfo = spi_intrinfo.co[i].entry;
-		spi_intrinfo.co[i].patch_data.vec_off = intrinfo->vector_base - ARM_GIC_SPI_MIN_IRQ;
+		spi_intrinfo.co[i].patch_data.vec_off = intrinfo->vector_base - 32;
 		spi_intrinfo.co[i].patch_data.gicd_base_vaddr = gicd_vaddr_base;
 
 		if (use_memory_mapped_callouts != 0)
@@ -1558,52 +1169,12 @@ void gic_v3_initialize(void)
 		add_interrupt(intrinfo);
 	}
 
-	const uint32_t num_espis = gic_v3_num_espis();
-	if ((espi_intrinfo.num_entries == 0U) && (num_espis > 0U))
-	{
-		gic_v3_intr_espi.num_vectors = num_espis;
-		const int r = gic_v3_espi_add_entry(&gic_v3_intr_espi);
-		if (debug_flag > 0)
-		{
-			kprintf("No ESPI intrinfo. Add default entry for %u -> %u vectors, %s\n",
-					gic_v3_intr_espi.vector_base, gic_v3_intr_espi.vector_base + gic_v3_intr_espi.num_vectors - 1U,
-					(r == 0) ? "Ok" : "Failed");
-		}
-
-	}
-	for (unsigned i=0; i<espi_intrinfo.num_entries; i++)
-	{
-		struct startup_intrinfo * const intrinfo = espi_intrinfo.co[i].entry;
-		espi_intrinfo.co[i].patch_data.vec_off = intrinfo->vector_base - ARM_GIC_ESPI_MIN_IRQ;
-		espi_intrinfo.co[i].patch_data.gicd_base_vaddr = gicd_vaddr_base;
-
-		if (use_memory_mapped_callouts != 0)
-		{
-			espi_intrinfo.co[i].patch_data.gicc_base_vaddr = gicc_vaddr_base;
-			intrinfo->eoi.rtn = &interrupt_eoi_gic_v3_spi_mm; /* same EOI as SPIs */
-		}
-
-		intrinfo->patch_data = (void *)&espi_intrinfo.co[i].patch_data;
-
-		/* set ESPIs being used as MSIs to edge triggered */
-		if ((intrinfo->flags & INTR_FLAG_MSI) != 0)
-		{
-			const unsigned start = intrinfo->vector_base;
-			const unsigned end = start + intrinfo->num_vectors;
-
-			for (unsigned irq=start; irq<end; irq++)
-			{
-				gic_v3_set_intr_trig_mode(irq, 1);
-			}
-		}
-		add_interrupt(intrinfo);
-	}
-
 	/* check to see whether LPIs are configured */
 	if (lpi_params.num_lpis > 0)
 	{
 		if (debug_flag > 1) kprintf("GICv3: %d LPI interrupts\n", lpi_params.num_lpis);
 
+		ASSERT(lpi_params.num_lpis >= 8192);	/* 8192 is the minimum */
 		ASSERT(lpi_params.num_lpis <= gic_v3_num_lpis());	/* implementation defined maximum */
 
 		/* only support a single common LPI config for now */
@@ -1617,7 +1188,7 @@ void gic_v3_initialize(void)
 			if (lpi_cfg_tbl_params->paddr == NULL_PADDR)
 			{
 				/* LPI config table entries are 1 byte so size is 'lpi_params.num_lpis' */
-				lpi_cfg_tbl_params->paddr = alloc_ram(NULL_PADDR, lpi_params.num_lpis, ARM_GIC_ESPI_MIN_IRQ);
+				lpi_cfg_tbl_params->paddr = alloc_ram(NULL_PADDR, lpi_params.num_lpis, 4096);
 			}
 			/* make sure the address is valid. We're done if its not */
 			ASSERT(lpi_cfg_tbl_params->paddr != NULL_PADDR);
@@ -1670,7 +1241,7 @@ void gic_v3_initialize(void)
 			lpi_cfg_tbl_params->propbaser |= ((_Uint64t)lpi_cfg_tbl_params->mem.shareability << 10);
 
 			unsigned bits = 14;	/* minimum when LPIs are supported */
-			while (((_Uint64t)1 << bits) < (lpi_params.num_lpis + ARM_GIC_LPI_MIN_IRQ)) {
+			while (((_Uint64t)1 << bits) < (lpi_params.num_lpis + 8192)) {
 				++bits;
 			}
 			lpi_cfg_tbl_params->propbaser |= (bits - 1);
@@ -1696,7 +1267,7 @@ void gic_v3_initialize(void)
 
 		if (debug_flag > 1) kprintf("Implementation supports %s physical LPIs\n", uses_ITS ? "ITS based" : "Direct");
 
-		const unsigned its_num = 0;	
+		const unsigned its_num = 0;	/* TODO - assuming only 1 ITS instance starting at 0 for now */
 		if (uses_ITS != 0) gic_v3_its_initialize(its_num);
 
 		for (unsigned i=0; i<lpi_intrinfo.num_entries; i++)
@@ -1729,7 +1300,7 @@ void gic_v3_initialize(void)
 				 * we'll need to change this to lsp.syspage.p->num_cpu
 				 */
 				lpi_intrinfo.co[i].patch_data.lpi_its.num_collections = 1;
-				lpi_intrinfo.co[i].patch_data.lpi_its.vec_off = intrinfo->vector_base - ARM_GIC_LPI_MIN_IRQ;
+				lpi_intrinfo.co[i].patch_data.lpi_its.vec_off = intrinfo->vector_base - 8192;
 				lpi_intrinfo.co[i].patch_data.lpi_its.cmd_q_last_offset = gic_v3_its_cmd_q_last_slot_offset(its_num);
 
 				intrinfo->patch_data = (void *)&lpi_intrinfo.co[i].patch_data.lpi_its;
@@ -1744,7 +1315,7 @@ void gic_v3_initialize(void)
 				lpi_intrinfo.co[i].patch_data.lpi_direct.gicr_base_vaddr = gicr_vaddr_base;
 				lpi_intrinfo.co[i].patch_data.lpi_direct.lpi_cfgtbl_vaddr = lpi_cfg_params->vaddr;
 				lpi_intrinfo.co[i].patch_data.lpi_direct.gicr_shift = gicr_offset_shift_val;
-				lpi_intrinfo.co[i].patch_data.lpi_direct.vec_off = intrinfo->vector_base - ARM_GIC_LPI_MIN_IRQ;
+				lpi_intrinfo.co[i].patch_data.lpi_direct.vec_off = intrinfo->vector_base - 8192;
 				intrinfo->patch_data = (void *)&lpi_intrinfo.co[i].patch_data.lpi_direct;
 			}
 			add_interrupt(intrinfo);
@@ -1771,6 +1342,16 @@ static void gic_v3_gicc_init(const unsigned cpu)
 	/* Get core affinity */
 	_Uint64t const mpidr = aa64_sr_rd64(mpidr_el1);
 	_Uint64t const cpu_aff = (_Uint32t)((mpidr & 0xFFFFFF) | ((mpidr >> 8) & 0xFF000000));
+	/*
+	 * set 'gicr_limit' to allow us to break the loop. We don't presuppose a 1:1
+	 * relationship between the the CPU # and the PE and therefore also cannot use
+	 * the 'last' bit. Calculate the limit once
+	 */
+	static paddr_t gicr_limit = NULL_PADDR;
+	if (gicr_limit == NULL_PADDR)
+	{
+		gicr_limit = gicr_paddr_base + (((paddr_t)1 << gicr_offset_shift_val) * board_smp_num_cpu());
+	}
 
 	unsigned gicr_index = 0;
 	do {
@@ -1782,10 +1363,9 @@ static void gic_v3_gicc_init(const unsigned cpu)
 		gic_core_gicr += (1 << gicr_offset_shift_val);
 		++gicr_index;
 
-		ASSERT(gicr_index < gicr_index_limit);
+		ASSERT(gic_core_gicr < gicr_limit);
 
 	} while (1);
-    // When there is more than one redistributor region, the top half will indicate it.
 	lsp.cpu.aarch64_gicr_map.p->gicr_idx[cpu] = gicr_index;
 
 	/* Make sure ProcessorSleep bit is off in WAKER? */
@@ -1829,11 +1409,11 @@ static void gic_v3_gicc_init(const unsigned cpu)
 			 * Note that the number of INTIDs supported by a redistributor can
 			 * be less than that indicated by the distributor
 			 */
-			const size_t tbl_size = ROUND((ARM_GIC_LPI_MIN_IRQ + lpi_params.num_lpis) / 8, 1024);
+			const size_t tbl_size = ROUND((8192 + lpi_params.num_lpis) / 8, 1024);
 			if (debug_flag > 1)
 			{
 				kprintf("LPI Pend table, num_lpis: %u, min required size: %u, actual size: %u\n",
-						lpi_params.num_lpis, (ARM_GIC_LPI_MIN_IRQ + lpi_params.num_lpis) / 8, tbl_size);
+						lpi_params.num_lpis, (8192 + lpi_params.num_lpis) / 8, tbl_size);
 			}
 			*pendtbl_paddr_p = calloc_ram(tbl_size, 0x10000);	/* 64KB aligned */
 			dcache_flush_len = tbl_size;
@@ -1939,7 +1519,6 @@ static void gic_v3_gicc_init(const unsigned cpu)
 	if (gic_sendipi == &sendipi_gic_v3_mm)
 	{
 		/* using memory mapped interface */
-        // XXX assumes cpu is the same as gicr_index
 		gic_map->gic_cpu[cpu] = ((1u << gicr_offset_shift_val)*cpu)
 								+ ARM_GICR_SGI_BASE_OFFSET+ARM_GICR_ISPENDR0;
 
@@ -1953,25 +1532,9 @@ static void gic_v3_gicc_init(const unsigned cpu)
 	else
 	{
 		/* Create value for ARM_GICC_SGI1R_EL1 register used in "sendipi" callout function */
-        _Uint64t const aff0 = cpu_aff & 0xfful;
-        _Uint64t const aff1 = (cpu_aff >> 8) & 0xfful;
-        _Uint64t const aff2 = (cpu_aff >> 16) & 0xfful;
-        _Uint64t const aff3 = (cpu_aff >> 32) & 0xfful;
-
-		_Uint64t icc_sgi1r = 1ul << (aff0 & 0x0ful);
-        icc_sgi1r |= (aff1 << 16);
-        icc_sgi1r |= (aff2 << 32);
-        icc_sgi1r |= (aff3 << 48);
-
-        if (aff0 >= 0x0ful) {
-            _Uint64t const ctlr = aa64_sr_rd64(S3_0_C12_C12_4);
-            _Uint32t const gicd_typer = in32(gicd_paddr_base + ARM_GICD_TYPER);
-            if ((ctlr & (1ul << 18)) && (gicd_typer & (1u << 26))) { // RSS supported
-                // Set RS field
-                icc_sgi1r |= (aff0 & 0xf0ul) << (44-4);
-            }
-        }
-
+		_Uint32t icc_sgi1r = (0x01U << (cpu_aff & 0x0F));
+		//XXXX: Looses Aff2/Aff3 values
+		icc_sgi1r |= ((cpu_aff & 0xFF00) << 8);
 		gic_map->gic_cpu[cpu] =  icc_sgi1r;
 
 		/* Enable the system register interface (icc_sre_el1) */
@@ -1999,6 +1562,8 @@ static void gic_v3_gicc_init(const unsigned cpu)
 /**
  * ============================================================================
  * Initialize the 'arm_gic_implementation' and 'arm_gic_arch_version' variables
+ *
+ * TODO: move to common GIC code
  *
 */
 static void gic_init_version_info(void)
@@ -2057,21 +1622,9 @@ static void gic_init_version_info(void)
 	if (debug_flag > 0)
 	{
 		const char *impl_id_str = NULL;
-		const uint32_t pidr0 = in32(gicd_paddr_base + PIDR0);
-		const uint32_t pidr1 = in32(gicd_paddr_base + PIDR1);
-		const uint32_t pidr2 = in32(gicd_paddr_base + PIDR2);
-		const uint32_t pidr3 = in32(gicd_paddr_base + PIDR3);
-		const uint32_t pidr4 = in32(gicd_paddr_base + PIDR4);
-		const uint32_t pidr5 = in32(gicd_paddr_base + PIDR5);
-
 		gic_get_impl_id(&impl_id_str);
 		kprintf("%s %s, arch v%u.%u detected\n", (arm_gic_id.implementation.company == 0x43B) ? "ARM" : "Non-ARM",
 				impl_id_str, arm_gic_id.arch_version.major, arm_gic_id.arch_version.minor);
-		kprintf("gic_v3: IIDR 0x%x PIDR2 0x%x impl 0x%x arch %u.%u\n",
-				gicd_iidr, gicd_pidr2, arm_gic_id.implementation.company, arm_gic_id.arch_version.major, arm_gic_id.arch_version.minor);
-		kprintf("gic_v3: PIDR 0x%x%x\n",
-				(pidr5<<8)|(pidr4<<0), 
-				((pidr3<<24)|(pidr2<<16)|(pidr1<<8)|(pidr0<<0)));
 	}
 }
 
@@ -2097,3 +1650,9 @@ static struct _lpi_tbl_params_s *select_lpi_cfg_table(const unsigned cpu)
 {
 	return &lpi_params.cfg.tbl_params[0];
 }
+
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/startup/lib/aarch64/gic_v3.c $ $Rev: 944535 $")
+#endif

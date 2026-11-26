@@ -6,10 +6,10 @@ devb-sdmmc-<variant> [cam cam_options][sdmmc sdmmc_options...][sdio sdio_options
 Options:  All options are separated by commas.
 
 cam options:
-    async=[priority]  Perform CPU cache invalidation after an I/O operation in
-                   a thread at "priority". In some cases, and on some boards,
-                   this can provide a performance boost.  Default off,
-                   priority 21.
+    async          Perform CPU cache invalidation after an I/O operation in a
+                   thread that's separate from the one that's notifying the
+                   upper layer. In some cases, and on some boards,
+                   this can provide a performance boost.  Default off.
     bounce=[size]  This option specifies the size of bounce buffer to use.
                    The bounce buffer acts as an intermediate buffer for doing
                    transfers to/from the media. Bounce buffers are useful for
@@ -24,12 +24,10 @@ cam options:
                    indicates the units: B (bytes; the default), K (kilobytes),
                    M (megabytes), or P (pages).  The default size=32k.
     cache=[on|off] Turn on/off usage of cached memory buffers.  Default on.
+
     lun=mask       Enable Logical Unit Number (LUN) scan for the devices
                    specified in mask. The mask is a hex bitmask specifying
                    which IDs to scan for; the default is 0x00.
-    maxio=wr:rd    Set max I/O write, read blocks.  Default 4096, limited by device.
-    noio           Completely remove the IO ability.  Both ThreadCtl(_NTO_TCTL_IO)
-                   and ThreadCtl(_NTO_TCTL_IO_PRIV) won't be called.
     nopriv         Don't call ThreadCtl(_NTO_TCTL_IO_PRIV).
     pnp            Enable CAM plug and play (i.e. don't exit at startup when
                    no devices are found).  Default off.
@@ -52,17 +50,16 @@ sdmmc options:
    for each controller. Remember, however, to specify the sdmmc keyword
    before each controller's set of options.
 
-   bkops=[on/auto]   Value 'on' = Manual background operations (WARNING: permanent setting)
-                     Value 'auto' = Device background operations.
-   busno=bus         The bus number of the SDIO controller.
-   bs=[options]      Set board specific options
-   cache=on          Enable eMMC/SD volatile cache
-   partitions=on     Enable eMMC partitions
-   powman=[name]     Connect to powerman.  Dflts: No connect, [name]=devb-sdmmc-<variant>.
    priority=prio     Set the priority of the processing thread. Dflt 21.
-   pwroff_notify=[short/long] Set power off notification mode for emmc [short/long].
-   relwr=on          Enable eMMc reliable write. Dflt off.
+   busno=bus         The bus number of the SDIO controller.
    verbose=[level]   Set the sdmmc verbosity level.
+   partitions=on     Enable eMMC partitions
+   cache=on          Enable eMMC volatile cache
+   bs=[options]      Set board specific options
+   pwroff_notify=[short/long] Set power off notification mode for emmc [short/long].
+   bkops=[on/auto]   Value 'on' = Manual background operations. Value 'auto' = Device background operations.
+
+
 
 sdio options:
    The sdio options control the driver's interface to the SD/MMC host
@@ -84,10 +81,9 @@ sdio options:
    ~ac12             Disable AC12.  Dflt on.
    ~ac23             Disable AC23.  Dflt on.
    bw=[~]bw          Set/Clear bus widths (4, 8).
-   timing=[~]timing  Set/Clear timings (hs, ddr, sdr12, sdr25, sdr50, sdr104, hs200, hs400, hs400es).
+   timing=[~]timing  Set/Clear timings (hs, ddr, sdr12, sdr25, sdr50, sdr104, hs200, hs400).
    pm=idle:sleep     Set the pwr mgnt idle/sleep time in ms. Dflt 100:10000 ms.
    emmc              eMMC device is connected to the interface
-   hs=options        Host specific options.
    bs=options        Board specific options.
-   nowp              Disable write protect detection.
    drv_type=drv_type Driver strength value for the HS_TIMING register (0, 1, 2, 3, 4). Dflt 0.
+

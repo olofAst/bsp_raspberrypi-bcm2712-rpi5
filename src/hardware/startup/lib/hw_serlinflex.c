@@ -1,25 +1,4 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC:
  * Copyright 2016, QNX Software Systems. 
  * 
@@ -48,7 +27,7 @@
  * and enabled FIFO mode (this code does not support buffer mode)
  */
 
-#include <startup.h>
+#include "startup.h"
 #include <hw/linflexd.h>
 
 static void parse_line(unsigned channel, const char *line, unsigned *baud, unsigned *clk)
@@ -85,7 +64,7 @@ static void parse_line(unsigned channel, const char *line, unsigned *baud, unsig
 
 void init_linflexd(unsigned channel, const char *init, const char *defaults)
 {
-	unsigned baud = 0, clk;
+	unsigned baud, clk;
 
 	/*
 	 * Default perpherial clock rate
@@ -113,3 +92,8 @@ void put_linflexd(int data)
 	// Send character to UART to transmit
 	out8(base + LINFLEXD_BDRL, (char)data);
 }
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/startup/lib/hw_serlinflex.c $ $Rev: 801787 $")
+#endif

@@ -1,25 +1,4 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC: 
  * Copyright 2008, QNX Software Systems.  
  *  
@@ -35,15 +14,14 @@
  * This file may contain contributions from others, either as  
  * contributors under the License or as licensors under other terms.   
  * Please review this entire file for other proprietary rights or license  
- * notices, as well as the QNX Development Suite License Guide at
- * http://licensing.qnx.com/license-guide/ for other information.
- * $
+ * notices, as well as the QNX Development Suite License Guide at  
+ * http://licensing.qnx.com/license-guide/ for other information. 
+ * $ 
  */
 
-#ifndef DL_CAM_H_INCLUDED
-#define DL_CAM_H_INCLUDED
-
 #include <ntocam.h>
+
+
 
 extern int cam_version;
 
@@ -51,13 +29,16 @@ extern int cam_version;
  * This list is matched with the exported symbol list.
  */
 static const struct dll_syms cam_syms[] = {
-	{ .symname = "cam_version", .addr  = &cam_version },
-	{ .symname = NULL, .addr  = NULL }
+	{ "cam_version", &cam_version },
+	{ NULL, NULL }
 };
 
 /*
  * This matched the dll file name
  */
-#define CAM_LIST		{ .fname = "libcam.so", .syms = cam_syms }
+#define CAM_LIST		"libcam.so", cam_syms
 
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/devb/include/dl_cam.h $ $Rev: 680332 $")
 #endif

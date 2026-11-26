@@ -1,25 +1,4 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC:
  * Copyright 2016, QNX Software Systems.
  * Copyright 2016, Freescale Semiconductor, Inc.
@@ -49,12 +28,6 @@
 #ifndef GIC_V3_H_
 #define GIC_V3_H_
 
-#define ARM_GIC_SPI_MIN_IRQ             32U
-#define ARM_GIC_SPI_MAX_IRQ             1019U
-#define ARM_GIC_ESPI_MIN_IRQ            4096U
-#define ARM_GIC_ESPI_MAX_IRQ            5119U
-#define ARM_GIC_LPI_MIN_IRQ             8192U
-
 /*
  * -----------------------------------------------------------------------
  * Interrupt Distributor registers
@@ -63,39 +36,32 @@
 
 #define ARM_GICV3D_SIZE                  0x10000
 
-#define ARM_GICD_CTLR                   0x0000U
-#define ARM_GICD_TYPER                  0x0004U
+#define ARM_GICD_CTLR                   0x0000
+#define ARM_GICD_CTLR_ARE_NS            0x00000020
+#define ARM_GICD_CTLR_ARE_S             0x00000010
+#define ARM_GICD_CTLR_EN_GRP1_S         0x00000004
+#define ARM_GICD_CTLR_EN_GRP1_NS        0x00000002
+#define ARM_GICD_CTLR_EN_GRP0           0x00000001
+#define ARM_GICD_TYPER                  0x0004
 #define ARM_GICD_TYPER_ITLN             0x1F
-#define ARM_GICD_IIDR                   0x0008U
-#define ARM_GICD_SETSPI_NSR             0x0040U
-#define ARM_GICD_CLRSPI_NSR             0x0048U
-#define ARM_GICD_IGROUPRn               0x0080U
-#define ARM_GICD_ISENABLERn             0x0100U
-#define ARM_GICD_ICENABLERn             0x0180U
-#define ARM_GICD_ISPENDRn               0x0200U
-#define ARM_GICD_ICPENDRn               0x0280U
-#define ARM_GICD_ISACTIVERn             0x0300U
-#define ARM_GICD_ICACTIVERn             0x0380U
-#define ARM_GICD_IPRIORITYn             0x0400U
-#define ARM_GICD_ITARGETSRn             0x0800U
-#define ARM_GICD_ICFGRn                 0x0C00U
-#define ARM_GICD_IGRPMODRn              0x0D00U
-#define ARM_GICD_SGIR                   0x0F00U
-#define ARM_GICD_CPENDSGIR              0x0F10U
-#define ARM_GICD_SPENDSGIR              0x0F20U
-#define ARM_GICD_IROUTERn               0x6000U
-
-#define ARM_GICD_ISENABLERnE            0x1200U
-#define ARM_GICD_ICENABLERnE            0x1400U
-#define ARM_GICD_ISPENDRnE              0x1600U
-#define ARM_GICD_ICPENDRnE              0x1800U
-#define ARM_GICD_ISACTIVERnE            0x1A00U
-#define ARM_GICD_ICACTIVERnE            0x1C00U
-#define ARM_GICD_IPRIORITYnE            0x2000U
-#define ARM_GICD_ICFGRnE                0x3000U
-#define ARM_GICD_IGRPMODRnE             0x3400U
-#define ARM_GICD_IROUTERnE              0x8000U
-
+#define ARM_GICD_IIDR                   0x0008
+#define ARM_GICD_SETSPI_NSR				0x0040
+#define ARM_GICD_CLRSPI_NSR				0x0048
+#define ARM_GICD_IGROUPRn               0x0080
+#define ARM_GICD_ISENABLERn             0x0100
+#define ARM_GICD_ICENABLERn             0x0180
+#define ARM_GICD_ISPENDRn               0x0200
+#define ARM_GICD_ICPENDRn               0x0280
+#define ARM_GICD_ISACTIVERn             0x0300
+#define ARM_GICD_ICACTIVERn             0x0380
+#define ARM_GICD_IPRIORITYn             0x0400
+#define ARM_GICD_ITARGETSRn             0x0800
+#define ARM_GICD_ICFGRn                 0x0C00
+#define ARM_GICD_IGRPMODRn              0x0D00
+#define ARM_GICD_SGIR                   0x0F00
+#define ARM_GICD_CPENDSGIR              0x0F10
+#define ARM_GICD_SPENDSGIR              0x0F20
+#define ARM_GICD_IROUTERn               0x6000
 
 /*
  * -----------------------------------------------------------------------
@@ -226,7 +192,6 @@
 #define GICD_CTLR_ENABLEGRP1S_2s     (1 << 2)
 #define GICD_CTLR_ARE_S_2s           (1 << 4)
 #define GICD_CTLR_ARE_NS_2s          (1 << 5)
-#define GICD_CTLR_DS_2s              (1 << 6)
 #define GICD_CTLR_E1NWF_2s           (1 << 7)
 /** @} */
 
@@ -244,7 +209,6 @@
 #define GICD_CTLR_ENABLEGRP0_1s     (1 << 0)
 #define GICD_CTLR_ENABLEGRP1_1s     (1 << 1)
 #define GICD_CTLR_ARE_1s            (1 << 4)
-#define GICD_CTLR_DS_1s             (1 << 6)
 #define GICD_CTLR_E1NWF_1s          (1 << 7)
 
 /** @} */
@@ -253,18 +217,14 @@
 /** @name GICD_TYPER */
 /** @{ */
 
-#define GICD_TYPER_ESPI             ((uint32_t)1U << 8)
-#define GICD_TYPER_SecurityExtn     ((uint32_t)1U << 10)
-#define GICD_TYPER_MBIS             ((uint32_t)1U << 16)
-#define GICD_TYPER_LPIS             ((uint32_t)1U << 17)
-#define GICD_TYPER_DVIS             ((uint32_t)1U << 18)
-#define GICD_TYPER_A3V              ((uint32_t)1U << 24)
-#define GICD_TYPER_A3V_s            (24U)
-#define GICD_TYPER_No1N             ((uint32_t)1U << 25)
-#define GICD_TYPER_RSS 	            ((uint32_t)1U << 26)
-#define GICD_TYPER_ESPI_RANGE_S     (27U)
-#define GICD_TYPER_ESPI_RANGE       ((uint32_t)0x1FU << GICD_TYPER_ESPI_RANGE_S)
-
+#define GICD_TYPER_SecurityExtn		(1 << 10)
+#define GICD_TYPER_MBIS             (1 << 16)
+#define GICD_TYPER_LPIS             (1 << 17)
+#define GICD_TYPER_DVIS             (1 << 18)
+#define GICD_TYPER_A3V              (1 << 24)
+#define GICD_TYPER_A3V_s            (24)
+#define GICD_TYPER_No1N             (1 << 25)
+#define GICD_TYPER_RSS 	            (1 << 26)
 
 /** @name GICD_IROUTERn*/
 /** @{ */
@@ -299,10 +259,10 @@
 #define GICR_TYPER_CommonLPIAff_MASK (3 << 24)
 #define GICR_TYPER_AFFINITYVALUE   (0xFFFFFFFFul << 32)
 #define GICR_TYPER_AFFINITYVALUE_S (32)
-#define GICR_TYPER_AFF3            (0xFFul << 56)
-#define GICR_TYPER_AFF2            (0xFFul << 48)
-#define GICR_TYPER_AFF1            (0xFFul << 40)
-#define GICR_TYPER_AFF0            (0xFFul << 32)
+#define GICR_TYPER_AFF3            (0xFFF << 56)
+#define GICR_TYPER_AFF2            (0xFFF << 48)
+#define GICR_TYPER_AFF1            (0xFFF << 40)
+#define GICR_TYPER_AFF0            (0xFFF << 32)
 /** @} */
 
 
@@ -443,7 +403,7 @@
 #define SGI_AFF1_S      (16)
 #define V3SGI_INTID       (0x0F)            //Temporary name as a collision result
 #define SGI_INTID_S     (24)
-#define SGI_AFF2        (0xFFul)
+#define SGI_AFF2        (0xFF)
 #define SGI_AFF2_S      (32)
 #define SGI_IRM         (0x01)
 #define SGI_IRM_S       (40)
@@ -460,3 +420,11 @@
 
 
 #endif    /* GIC_V3_H_ */
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+#ifdef __ASM__
+__SRCVERSION "$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/startup/lib/public/aarch64/gic_v3.h $ $Rev: 894431 $"
+#else
+__SRCVERSION( "$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/startup/lib/public/aarch64/gic_v3.h $ $Rev: 894431 $" )
+#endif
+#endif

@@ -1,25 +1,4 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC:
  * Copyright 2008, QNX Software Systems.
  *
@@ -41,7 +20,9 @@
  */
 
 
-#include <startup.h>
+#include "startup.h"
+
+static const KERCALL_SEQUENCE(kercall);
 
 uintptr_t boot_vaddr_base;
 uintptr_t boot_vaddr_end;
@@ -219,18 +200,31 @@ init_system_private() {
 	as_add(start_paddr, full_ram_paddr+shdr->ram_size-1, AS_ATTR_RAM,
 				"bootram", mem);
 
+	if(lsp.mdriver.size > 0) {
+		// If we have any mini-drivers, we can't let the kernel use
+		// startup memory.
+		alloc_ram(full_ram_paddr, shdr->startup_size, 1);
+	}
+
 	load_bootstraps(ifs_hdr, private);
+
+    if ((boot_vaddr_base > 0u) && (boot_vaddr_end > boot_vaddr_base)) {
+		mem = as_find(AS_NULL_OFF, "virtual", NULL);
+		if (mem == AS_NULL_OFF) {
+			mem = as_add(0u, 0xffffffffu, AS_ATTR_NONE, "virtual", AS_NULL_OFF);
+		}
+		as_add(boot_vaddr_base, boot_vaddr_end, AS_ATTR_NONE, "vboot", mem);
+	}
 
 	// Calculate checksum as last thing we do
 	if((rifs_flag & RIFS_FLAG_ENABLE)) {
 		rifs_set_cksum(ifs_hdr);
 	}
 
-	// Update syspage entries with the given fdt only when -u startup option is specified
-	if (fdt_boot_option && (fdt != NULL)) {
-		as_add(fdt_paddr, fdt_paddr + fdt_size - 1, AS_ATTR_ROM, "fdt", mem);
-		alloc_ram(fdt_paddr, fdt_size, 1);
-	}
+	//
+	// Put in the instructions required to make a kernel call.
+	//
+	memmove(&private->kercall, &kercall, sizeof(kercall));
 
 	//
 	// Add the additional memory blocks specified by the -M option(s) now.
@@ -279,7 +273,7 @@ init_system_private() {
 #endif
 			break;
 		case 'r':
-			// reserve user-specified memory from asinfo
+			// reserve user specified memory
 			resmem_addr = getsize(optarg, &p);
 			if(*p == ',') {
 				resmem_size = getsize(p + 1, &p);
@@ -325,6 +319,8 @@ init_system_private() {
 	//
 	smp_hook_rtn();
 
+	mdriver_hook();
+
 	// Propagate the -F switches. Has to be done down here because the
 	// smp_hook_rtn() call just above is the one that sets the flags
 	// field for the AP's.
@@ -339,8 +335,6 @@ init_system_private() {
 	//
 	add_sysram();
 
-	hypervisor_syspage_init();
-
 	//
 	// Allocate the real storage location for the system & cpu pages.
 	// We can't call set_syspage_section()/grow_syspage_section() after this.
@@ -351,3 +345,8 @@ init_system_private() {
 	// NOTE: Must be stored after alloc_syspage_memory.
 	jtag_store_syspage_addr();
 }
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/startup/lib/init_system_private.c $ $Rev: 892924 $")
+#endif

@@ -1,26 +1,6 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
- * Copyright (c) 2008, 2023, BlackBerry Limited. All rights reserved
+ * $QNXLicenseC:
+ * Copyright 2008, QNX Software Systems.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"). You
  * may not reproduce, modify or distribute this software except in
@@ -36,12 +16,13 @@
  * Please review this entire file for other proprietary rights or license
  * notices, as well as the QNX Development Suite License Guide at
  * http://licensing.qnx.com/license-guide/ for other information.
+ * $
  */
 
 
 
-#include <startup.h>
-#include <sys/restore_ifs.h>
+#include "startup.h"
+#include "restore_ifs.h"
 
 #define RIFS_DEBUG_LEVEL 1
 
@@ -61,6 +42,7 @@ unsigned 					rifs_flag = RIFS_FLAG_NONE;
 paddr_t 					ifs2_paddr_src = 0;
 paddr_t 					ifs2_paddr_dst = 0;
 unsigned 					ifs2_size = 0;
+unsigned 					mdriver_cksum_max = KILO(500);
 
 // Load a secondary (non-bootable) image file system
 void load_ifs2_nonbootable(void)
@@ -469,13 +451,25 @@ static _EPhdr_t *rifs_readelf(paddr_t paddr, uint32_t *poff, uint32_t *psiz)
 static int rifs_checksum(void *ptr, long len)
 {
 	int			*data = (int *)ptr;
+	long		mdriver_count = 0;
 	int 		sum;
+	unsigned	max;
+
+	// The checksum may take a while for large images, so we want to poll the mini-driver
+	max = (lsp.mdriver.size > 0) ? mdriver_cksum_max : len;
 
 	sum = 0;
 	while(len > 0)
 	{
 		sum += *data++;
 		len -= 4;
+		mdriver_count += 4;
+		if(mdriver_count >= max)
+		{
+			// Poll the mini-driver when we reach the limit
+			mdriver_check();
+			mdriver_count = 0;
+		}
 	}
 	return(sum);
 }
@@ -578,3 +572,8 @@ static int check_ifs_signature(struct image_header	*ifs_hdr)
 	// Found valid IFS signature
 	return(0);
 }
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/startup/lib/restore_ifs.c $ $Rev: 892924 $")
+#endif

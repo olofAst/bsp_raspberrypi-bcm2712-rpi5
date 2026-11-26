@@ -1,25 +1,4 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC:
  * Copyright 2008, QNX Software Systems. 
  * 
@@ -44,12 +23,12 @@
 
 
 
-#include <startup.h>
+#include "startup.h"
 
 unsigned long
 timer_tick2ns(unsigned long ticks) {
 	int power = (-9) - lsp.qtime.p->timer_scale;
-	unsigned long period = lsp.qtime.p->timer_period;
+	unsigned long rate = lsp.qtime.p->timer_rate;
 	unsigned long ns = 0;
 
 	//
@@ -57,15 +36,15 @@ timer_tick2ns(unsigned long ticks) {
 	//
 	for( ;; ) {
 		if(ns == 0) {
-			ns = period * ticks;
-			if((ns / period) != ticks) {
+			ns = rate * ticks;
+			if((ns / rate) != ticks) {
 				//Overflow
 				ns = 0;
 			}
 		}
 		if(power <= 0) break;
 		ns /= 10;
-		period /= 10;
+		rate /= 10;
 		--power;
 	}
 	while(power < 0) {
@@ -74,3 +53,8 @@ timer_tick2ns(unsigned long ticks) {
 	}
 	return(ns);
 }
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/startup/lib/timer_tick2ns.c $ $Rev: 680332 $")
+#endif

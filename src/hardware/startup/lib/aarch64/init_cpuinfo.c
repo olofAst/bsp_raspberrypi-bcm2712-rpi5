@@ -1,26 +1,6 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
- * Copyright 2014,2025, BlackBerry Limited.
+ * $QNXLicenseC:
+ * Copyright 2014, QNX Software Systems.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"). You
  * may not reproduce, modify or distribute this software except in
@@ -39,28 +19,16 @@
  * $
  */
 
-#include <startup.h>
+#include "startup.h"
 
 
 #define	CPUID_IS_ARM(x)		((((x) >> 24) & 0xff) == 0x41)
 #define	ARM_VARIANT(x)		(((x) >> 20) & 0xf)
 #define	ARM_REVISION(x)		((x) & 0xf)
 
-#define	AA64PFR0_SVE(x)		((((x) >> 32) & 0xfUL) == 0x1)
 #define	AA64PFR0_SIMD(x)	((((x) >> 20) & 0xfUL) != 0xfUL)
 #define	AA64PFR0_FP(x)		((((x) >> 16) & 0xfUL) != 0xfUL)
 #define AA64ISAR0_LSE(x)	((((x) >> 20) & 0xfUL) == 0x002)
-#define AA64ISAR0_AES(x)	((((x) >> 4) & 0xfUL) == 0x1)
-#define AA64ISAR0_PMULL(x)	((((x) >> 4) & 0xfUL) == 0x2)
-#define AA64ISAR0_SHA1(x)	((((x) >> 8) & 0xfUL) == 0x1)
-#define AA64ISAR0_SHA256(x)	((((x) >> 12) & 0xfUL) == 0x1)
-#define AA64ISAR0_SHA512(x)	((((x) >> 12) & 0xfUL) == 0x2)
-#define AA64ISAR0_SHA3(x)	((((x) >> 32) & 0xfUL) == 0x1)
-#define AA64ISAR0_RNDR(x)	((((x) >> 60) & 0xfUL) == 0x1)
-
-#ifndef AARCH64_CPU_FLAG_SVE
-#define AARCH64_CPU_FLAG_SVE	0x10000000UL
-#endif
 
 void init_one_cpuinfo(unsigned cpunum);
 
@@ -94,7 +62,7 @@ init_cache(struct cpuinfo_entry *cpu, unsigned cpunum)
 	if (clidr & 4) {
 		cache_sizes(0, &nsets, &assoc, &lsize);
 		cpu->data_cache = add_cache_ways(cpu->data_cache,
-									CACHE_FLAG_UNIFIED | cache_snooped,
+									CACHE_FLAG_UNIFIED,
 									lsize, nsets * assoc, assoc,
 									&cache_armv8_dcache);
 	} else {
@@ -108,7 +76,7 @@ init_cache(struct cpuinfo_entry *cpu, unsigned cpunum)
 		if (clidr & 2) {
 			cache_sizes(0, &nsets, &assoc, &lsize);
 			cpu->data_cache = add_cache_ways(cpu->data_cache,
-										CACHE_FLAG_DATA | cache_snooped,
+										CACHE_FLAG_DATA,
 										lsize, nsets * assoc, assoc,
 										&cache_armv8_dcache);
 		}
@@ -118,14 +86,14 @@ init_cache(struct cpuinfo_entry *cpu, unsigned cpunum)
 		int			i;
 		unsigned	ctype;
 		unsigned	ctr;
-		static const char *const l1ip[] = {
+		static const char *l1ip[] = {
 			"unknown", "AIVIVT", "VIPT", "PIPT"
 		};
 
 		ctr = aa64_sr_rd32(dczid_el0);
-		if ((ctr & (1u << 4)) == 0) {
-			kprintf("cpu%d: DCZID_EL0=0x%x (%d bytes)\n",
-					cpunum, ctr, 1 << ((ctr & 0xf) + 2));
+		if (ctr & (1u << 4)) {
+			kprintf("cpu%d: DCZID_EL0=%w (%d bytes)\n",
+					ctr, 1 << ((ctr & 0xf) + 2));
 		}
 
 		ctr = aa64_sr_rd32(ctr_el0);
@@ -205,8 +173,13 @@ init_one_cpuinfo(unsigned cpunum)
 	name = id ? id->name : "Unknown";
 	cpu->name = add_string(name);
 
+	/*
+	 * FIXME_AARCH64: smp_hwcoreid is 32-bit so we lose MPIDR.Aff3
+	 *                This is the least of our problems if we encounter a
+	 *                system with 4 levels of cpu clusters...
+	 */
 	mpidr = aa64_sr_rd64(mpidr_el1);
-	cpu->smp_hwcoreid = mpidr;
+	cpu->smp_hwcoreid = (unsigned)mpidr;
 
 	if (cpu_freq != 0) {
 		cpu->speed = cpu_freq / 1000000;
@@ -215,7 +188,7 @@ init_one_cpuinfo(unsigned cpunum)
 	}
 
 	if (debug_flag) {
-		kprintf("cpu%d: MPIDR=%v\n", cpunum, mpidr);
+		kprintf("cpu%d: MPIDR=%x\n", cpunum, mpidr);
 		if (CPUID_IS_ARM(cpuid)) {
 			kprintf("cpu%d: MIDR=%w %s r%dp%d\n",
 					cpunum, cpuid, name,
@@ -246,18 +219,6 @@ init_one_cpuinfo(unsigned cpunum)
 	}
 
 	/*
-	 * Detect if we have SVE and the user enables it.
-	 */
-	if(sve_requested != 0) {
-		pfr = aa64_sr_rd64(id_aa64pfr0_el1);
-		if (AA64PFR0_SVE(pfr)) {
-			cpu->flags |= AARCH64_CPU_FLAG_SVE;
-		} else {
-			kprintf("WARN: SVE requested, but not supported by CPU\n");
-		}
-	}
-
-	/*
 	 * Enable EL0 access to CNTVCT_EL0 for ClockCycles()
 	 */
 	aa64_sr_wr32(cntkctl_el1, 1 << 1);
@@ -277,7 +238,7 @@ init_one_cpuinfo(unsigned cpunum)
 	 * Enable Spectre V2 fix
 	 */
 	if (spectre_v2_active > 0) {
-		if ((id != NULL) && ((id->midr == cpuid_a57.midr) || (id->midr == cpuid_a72.midr))) {
+		if ((id->midr == cpuid_a57.midr) || (id->midr == cpuid_a72.midr)) {
 			cpu->flags |= AARCH64_CPU_SPECTRE_V2_MMU;
 		} else {
 			cpu->flags |= AARCH64_CPU_SPECTRE_V2_FIX;
@@ -297,26 +258,10 @@ init_one_cpuinfo(unsigned cpunum)
 	if (AA64ISAR0_LSE(isar0)) {
 		cpu->flags |= AARCH64_CPU_FLAG_LSE;
 	}
-	if (AA64ISAR0_AES(isar0)) {
-		cpu->flags |= AARCH64_CPU_FLAG_AES;
-	}
-	if (AA64ISAR0_PMULL(isar0)) {
-		cpu->flags |= AARCH64_CPU_FLAG_PMULL | AARCH64_CPU_FLAG_AES;
-	}
-	if (AA64ISAR0_SHA1(isar0)) {
-		cpu->flags |= AARCH64_CPU_FLAG_SHA1;
-	}
-	if (AA64ISAR0_SHA256(isar0)) {
-		cpu->flags |= AARCH64_CPU_FLAG_SHA256;
-	}
-	if (AA64ISAR0_SHA512(isar0)) {
-		cpu->flags |= AARCH64_CPU_FLAG_SHA512 | AARCH64_CPU_FLAG_SHA256;
-	}
-	if (AA64ISAR0_SHA3(isar0)) {
-		cpu->flags |= AARCH64_CPU_FLAG_SHA3;
-	}
-	if (AA64ISAR0_RNDR(isar0)) {
-		cpu->flags |= AARCH64_CPU_FLAG_RNDR;
+
+	// Detect if we have Virtualization Host Extensions
+	if(aa64_sr_rd64(id_aa64mmfr1_el1) & 0x0f00) {
+		cpu->flags |= AARCH64_CPU_FLAG_VHE;
 	}
 #ifdef AARCH64_CPU_PAUTH
 	/* Detect if we have pointer authentication instructions */
@@ -327,11 +272,6 @@ init_one_cpuinfo(unsigned cpunum)
 		}
 	}
 #endif
-
-	unsigned ctr = aa64_sr_rd32(ctr_el0);
-	if ((ctr & (1U << 29)) != 0U) {
-		cpu->flags |= AARCH64_CPU_FLAG_ICACHE_COHERENT;
-	}
 
 	/*
 	 * Set up cache callouts
@@ -356,101 +296,6 @@ init_one_cpuinfo(unsigned cpunum)
 	 * zero CPACR_EL1, which will disable exception for EVT, FPU, and SVE.
 	 */
 	aa64_sr_wr32(cpacr_el1, 0);
-
-    /* Dump ID registers */
-    uint64_t * const dump_space =
-        &lsp.cpu.aarch64_idreg_dump.p->idreg[cpunum*AARCH64_IDDUMP_ENTRIES];
-    asm (
-        "mrs    x0, S3_0_C0_C1_0\n"
-        "mrs    x1, S3_0_C0_C1_1\n"
-        "stp    x0, x1, [%[dump]], #16\n"
-        "mrs    x0, S3_0_C0_C1_2\n"
-        "mrs    x1, S3_0_C0_C1_3\n"
-        "stp    x0, x1, [%[dump]], #16\n"
-        "mrs    x0, S3_0_C0_C1_4\n"
-        "mrs    x1, S3_0_C0_C1_5\n"
-        "stp    x0, x1, [%[dump]], #16\n"
-        "mrs    x0, S3_0_C0_C1_6\n"
-        "mrs    x1, S3_0_C0_C1_7\n"
-        "stp    x0, x1, [%[dump]], #16\n"
-
-        "mrs    x0, S3_0_C0_C2_0\n"
-        "mrs    x1, S3_0_C0_C2_1\n"
-        "stp    x0, x1, [%[dump]], #16\n"
-        "mrs    x0, S3_0_C0_C2_2\n"
-        "mrs    x1, S3_0_C0_C2_3\n"
-        "stp    x0, x1, [%[dump]], #16\n"
-        "mrs    x0, S3_0_C0_C2_4\n"
-        "mrs    x1, S3_0_C0_C2_5\n"
-        "stp    x0, x1, [%[dump]], #16\n"
-        "mrs    x0, S3_0_C0_C2_6\n"
-        "mrs    x1, S3_0_C0_C2_7\n"
-        "stp    x0, x1, [%[dump]], #16\n"
-
-        "mrs    x0, S3_0_C0_C3_0\n"
-        "mrs    x1, S3_0_C0_C3_1\n"
-        "stp    x0, x1, [%[dump]], #16\n"
-        "mrs    x0, S3_0_C0_C3_2\n"
-        "mrs    x1, S3_0_C0_C3_3\n"
-        "stp    x0, x1, [%[dump]], #16\n"
-        "mrs    x0, S3_0_C0_C3_4\n"
-        "mrs    x1, S3_0_C0_C3_5\n"
-        "stp    x0, x1, [%[dump]], #16\n"
-        "mrs    x0, S3_0_C0_C3_6\n"
-        "mrs    x1, S3_0_C0_C3_7\n"
-        "stp    x0, x1, [%[dump]], #16\n"
-
-        "mrs    x0, S3_0_C0_C4_0\n"
-        "mrs    x1, S3_0_C0_C4_1\n"
-        "stp    x0, x1, [%[dump]], #16\n"
-        "mrs    x0, S3_0_C0_C4_2\n"
-        "mrs    x1, S3_0_C0_C4_3\n"
-        "stp    x0, x1, [%[dump]], #16\n"
-        "mrs    x0, S3_0_C0_C4_4\n"
-        "mrs    x1, S3_0_C0_C4_5\n"
-        "stp    x0, x1, [%[dump]], #16\n"
-        "mrs    x0, S3_0_C0_C4_6\n"
-        "mrs    x1, S3_0_C0_C4_7\n"
-        "stp    x0, x1, [%[dump]], #16\n"
-
-        "mrs    x0, S3_0_C0_C5_0\n"
-        "mrs    x1, S3_0_C0_C5_1\n"
-        "stp    x0, x1, [%[dump]], #16\n"
-        "mrs    x0, S3_0_C0_C5_2\n"
-        "mrs    x1, S3_0_C0_C5_3\n"
-        "stp    x0, x1, [%[dump]], #16\n"
-        "mrs    x0, S3_0_C0_C5_4\n"
-        "mrs    x1, S3_0_C0_C5_5\n"
-        "stp    x0, x1, [%[dump]], #16\n"
-        "mrs    x0, S3_0_C0_C5_6\n"
-        "mrs    x1, S3_0_C0_C5_7\n"
-        "stp    x0, x1, [%[dump]], #16\n"
-
-        "mrs    x0, S3_0_C0_C6_0\n"
-        "mrs    x1, S3_0_C0_C6_1\n"
-        "stp    x0, x1, [%[dump]], #16\n"
-        "mrs    x0, S3_0_C0_C6_2\n"
-        "mrs    x1, S3_0_C0_C6_3\n"
-        "stp    x0, x1, [%[dump]], #16\n"
-        "mrs    x0, S3_0_C0_C6_4\n"
-        "mrs    x1, S3_0_C0_C6_5\n"
-        "stp    x0, x1, [%[dump]], #16\n"
-        "mrs    x0, S3_0_C0_C6_6\n"
-        "mrs    x1, S3_0_C0_C6_7\n"
-        "stp    x0, x1, [%[dump]], #16\n"
-
-        "mrs    x0, S3_0_C0_C7_0\n"
-        "mrs    x1, S3_0_C0_C7_1\n"
-        "stp    x0, x1, [%[dump]], #16\n"
-        "mrs    x0, S3_0_C0_C7_2\n"
-        "mrs    x1, S3_0_C0_C7_3\n"
-        "stp    x0, x1, [%[dump]], #16\n"
-        "mrs    x0, S3_0_C0_C7_4\n"
-        "mrs    x1, S3_0_C0_C7_5\n"
-        "stp    x0, x1, [%[dump]], #16\n"
-        "mrs    x0, S3_0_C0_C7_6\n"
-        "mrs    x1, S3_0_C0_C7_7\n"
-    : "=m" (* (uint64_t (*)[]) dump_space) : [dump] "r" (dump_space) : "x0", "x1");
 }
 
 void
@@ -460,6 +305,7 @@ init_cpuinfo()
 	unsigned				num;
 	unsigned				i;
 
+	el2_transfer_table_allocate();
 	num = lsp.syspage.p->num_cpu;
 
 	cpu = set_syspage_section(&lsp.cpuinfo, sizeof(*lsp.cpuinfo.p) * num);
@@ -467,10 +313,12 @@ init_cpuinfo()
 		cpu[i].ins_cache  = system_icache_idx;
 		cpu[i].data_cache = system_dcache_idx;
 	}
-
-    // 6 bits worth of ID reg space, minus C0, so 56 entries
-    set_syspage_section(&lsp.cpu.aarch64_idreg_dump,
-        (unsigned)(num * sizeof(_Uint64t) * AARCH64_IDDUMP_ENTRIES));
-
 	init_one_cpuinfo(0);
 }
+
+
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/startup/lib/aarch64/init_cpuinfo.c $ $Rev: 937218 $")
+#endif

@@ -1,25 +1,4 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC:
  * Copyright 2007, 2008, QNX Software Systems.
  *
@@ -43,15 +22,10 @@
 #ifndef _MMC_H_INCLUDED
 #define _MMC_H_INCLUDED
 
-// Compile time options
-
-// Currently untested, requires older eMMC parts
-//#define MMC_REL_WR_LEGACY_SUP		// Enable Legacy Reliable Write support
-
 #define MMC_PARTITION_SWITCH_TIMEOUT	10			// 10ms
 #define MMC_OUT_OF_INTERRUPT_TIMEOUT	10			// 10ms
-#define MMC_ERASE_TIMEOUT			300U			// 300ms
-#define MMC_ERASE_TIMEOUT_MIN		2000U			// set min timeout to 2 seconds
+#define MMC_ERASE_TIMEOUT			300			// 300ms
+#define MMC_ERASE_TIMEOUT_MIN		2000		// set min timeout to 2 seconds
 #define MMC_ERASE_GRP_512K			0x80000LL
 #define MMC_PART_USER				0
 #define MMC_PART_BOOT1				1
@@ -413,7 +387,6 @@
 
 #define ECSD_S_A_TIMEOUT			217
 #define ECSD_HC_WP_GRP_SIZE			221
-#define ECSD_REL_WR_SEC_C			222
 #define ECSD_ERASE_MULT				223	// Erase Timeout Multiplier
 #define ECSD_ACC_SIZE				225
 #define ECSD_ERASE_GRP_SIZE			224
@@ -441,10 +414,6 @@
 
 #define	ECSD_FIRMWARE_VERSION		254	// Firmware version, 8 bytes
 
-#define ECSD_PRE_EOL_INFO				267
-#define ECSD_DEVICE_LIFE_TIME_EST_TYP_A	268
-#define ECSD_DEVICE_LIFE_TIME_EST_TYP_B	269
-
 #define	ECSD_FFU_ARG				487	// FFU argument, 4 bytes
 
 #define ECSD_FFU_FEATURE			492
@@ -463,4 +432,10 @@
 
 #define ECSD_S_CMD_SET				504
 
+#endif
+
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/devb/sdmmc/sdiodi/include/mmc.h $ $Rev: 890131 $")
 #endif

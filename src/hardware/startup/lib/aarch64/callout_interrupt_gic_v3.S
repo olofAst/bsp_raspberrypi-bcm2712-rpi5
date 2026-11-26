@@ -1,26 +1,5 @@
-/*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
 
-
-# Copyright 2014, 2021, 2025 QNX Software Systems.
+# Copyright 2014, 2021 QNX Software Systems.
 # Copyright 2016, Freescale Semiconductor, Inc.
 # Copyright 2017 NXP
 #
@@ -46,7 +25,7 @@
  * See callout.ah for description of special registers for interrupt callouts.
  */
 
-#include <aarch64/callout.ah>
+#include "callout.ah"
 #include "aarch64/gic_v3.h"
 
 
@@ -206,12 +185,11 @@ CALLOUT_START(interrupt_mask_gic_v3_ppi, 0, ppi_patch)
 
     /* adjust GICR to proper CPU */
     mrs     x9, tpidr_el1
-    /* top bit indicate whether GICR location is in the top 32-bits */
+    /* top bit indicate whether GICR index is in the top 32-bits */
     and     x2, x9, #(1ul << 63)
     cbz     x2, 0f
     lsr     x9, x9, #32
-    /* x7 has the right GICR region, only bits 32-47 of TPIDR matter */
-    and     x9, x9, #0xffff
+    and     x9, x9, #0x7fffffff
 0:
     lsl     x9, x9, x8
     add     x7, x7, x9
@@ -225,10 +203,8 @@ CALLOUT_START(interrupt_mask_gic_v3_ppi, 0, ppi_patch)
     str     w1, [x7, #ARM_GICR_ICENABLER0]
 
     /* wait for RWP to be clear */
-    /* x7 is in the SGI_base frame, but GICR_CTLR is in the RD_base frame */
-    sub     x10, x7, #ARM_GICR_SGI_BASE_OFFSET
 1:
-    ldr     w2, [x10, #ARM_GICR_CTLR]
+    ldr     w2, [x7, #ARM_GICR_CTLR]
     tbnz    w2, #3, 1b
 
     mov     x0, #0
@@ -257,12 +233,11 @@ CALLOUT_START(interrupt_unmask_gic_v3_ppi, 0, ppi_patch)
 
     /* adjust GICR to proper CPU */
     mrs     x9, tpidr_el1
-    /* top bit indicate whether GICR location is in the top 32-bits */
+    /* top bit indicate whether GICR index is in the top 32-bits */
     and     x2, x9, #(1ul << 63)
     cbz     x2, 0f
     lsr     x9, x9, #32
-    /* x7 has the right GICR region, only bits 32-47 of TPIDR matter */
-    and     x9, x9, #0xffff
+    and     x9, x9, #0x7fffffff
 0:
     lsl     x9, x9, x8
     add     x7, x7, x9
@@ -324,7 +299,7 @@ CALLOUT_END(interrupt_id_gic_v3_spi)
 
 /*
  * -----------------------------------------------------------------------
- * Acknowledge specified SPI interrupt
+ * Acknowledge specified interrupt
  *
  * x19 - contains interrupt id
  * x24 - contains original IAR read value from interrupt_id_gic_v3_ppi_sr
@@ -353,7 +328,7 @@ CALLOUT_END(interrupt_eoi_gic_v3_spi_mm)
 
 
 /*
- * Patch SPI/ESPI interrupt callouts to access GICD regs
+ * Patch SPI interrupt callouts to access GICD regs
 
  * Patcher routines take the following arguments:
  *  x0 - syspage paddr
@@ -470,122 +445,6 @@ CALLOUT_START(interrupt_unmask_gic_v3_spi, 0, spi_patch)
     mov     x0, #0
     ret
 CALLOUT_END(interrupt_unmask_gic_v3_spi)
-
-/*
- * -----------------------------------------------------------------------
- * Identify ESPI interrupt source
- *
- * X24 - read of IAR from interrupt_id_gic_v3_ppi_[sr,mr]
- * -----------------------------------------------------------------------
- */
-CALLOUT_START(interrupt_id_gic_v3_espi, 0, 0)
-    /*
-     * Get interrupt ID
-     */
-    /* make return value relative to ESPIs */
-    sub     x0, x24, #4096
-    cmp     x0, #1023
-    mov     x1, #-1
-    /* Return INTID if <= 4096+1023, -1 otherwise */
-    csel    x19, x1, x0, hi
-
-CALLOUT_END(interrupt_id_gic_v3_espi)
-
-/*
- * -----------------------------------------------------------------------
- * Acknowledge specified ESPI interrupt
- *
- * x19 - contains interrupt id
- * x24 - contains original IAR read value from interrupt_id_gic_v3_ppi_sr
- *
- * -----------------------------------------------------------------------
- */
- /* same as SPI EOI so use that routine */
-
-/*
- * -----------------------------------------------------------------------
- * Mask specified interrupt
- *
- * x0 - _syspage_ptr
- * x1 - vector number (relative to ESPI's)
- * -----------------------------------------------------------------------
- */
-CALLOUT_START(interrupt_mask_gic_v3_espi, 0, spi_patch)
-
-    /* x7 will be patched with the vaddr for the base of the distributor registers (GICD) */
-    mov     x7, #1234
-    movk    x7, #1234, lsl #16
-    movk    x7, #1234, lsl #32
-    movk    x7, #1234, lsl #48
-
-    /* x8 will be patched with the ESPI offset adjustment for this ESPI block
-    /* could have used an add x1, x1, #1234 but then couldn't use CALLOUT_PATCH_RW macro */
-    mov     x8, #1234
-    add     x1, x1, x8
-
-    /*
-     * Mask interrupt
-     * Bit to set is 1 << (INTID % 32)
-     * Register Index is INTID / 32
-     * ICENABLERnE[Register Index] = bit
-     */
-    mov     x5, #ARM_GICD_ICENABLERnE
-    add     x5, x7, x5
-    and     w0, w1, #0x1f
-    mov     w2, #1
-    lsl     w2, w2, w0
-    lsr     w0, w1, #5
-    str     w2, [x5, x0, lsl #2]
-
-    /* wait for RWP to be clear */
-1:
-    ldr     w2, [x7, #ARM_GICD_CTLR]
-    tbnz    w2, #31, 1b
-
-    mov     x0, #0
-    ret
-
-CALLOUT_END(interrupt_mask_gic_v3_espi)
-
-/*
- * -----------------------------------------------------------------------
- * Unmask specified interrupt
- *
- * x0 - _syspage_ptr
- * x1 - vector number (relative to ESPI's)
- * -----------------------------------------------------------------------
- */
-CALLOUT_START(interrupt_unmask_gic_v3_espi, 0, spi_patch)
-
-    /* x7 will be patched with the vaddr for the base of the distributor registers (GICD) */
-    mov     x7, #1234
-    movk    x7, #1234, lsl #16
-    movk    x7, #1234, lsl #32
-    movk    x7, #1234, lsl #48
-
-    /* x8 will be patched with the ESPI offset adjustment for this ESPI block
-    /* could have used an add x1, x1, #1234 but then couldn't use CALLOUT_PATCH_RW macro */
-    mov     x8, #1234
-    add     x1, x1, x8
-
-    /*
-     * Unmask interrupt
-     * Bit to set is 1 << (INTID % 32)
-     * Register Index is INTID / 32
-     * ISENABLERnE[Register Index] = bit
-     */
-    mov     x5, #ARM_GICD_ISENABLERnE
-    add     x5, x7, x5
-    and     w0, w1, #0x1f
-    mov     w2, #1
-    lsl     w2, w2, w0
-    lsr     w0, w1, #5
-    str     w2, [x5, x0, lsl #2]
-
-    mov     x0, #0
-    ret
-CALLOUT_END(interrupt_unmask_gic_v3_espi)
-
 
 /*
  * -----------------------------------------------------------------------
@@ -988,16 +847,27 @@ CALLOUT_START(interrupt_mask_gic_v3_lpi_its, 0, lpi_its_patch)
      *    x7  - offset of LPI vector entry to mask/disable
      *    x1 - x6 - scratch
     */
-    /* Obtain spinlock - InterruptLock() */
-    mov     w4, #1
+
+    /*
+     * wait for spinlock available
+     *    while atomic_add_value(&lock, 1) != 0)
+     *    {
+     *        atomic_sub(&lock, 1);
+     *    }
+    */
 mask_lock:
     ldaxr   w1, [x12]
-    cbnz    w1, 0f
-    stxr    w1, w4, [x12]
-    cbnz    w1, mask_lock
-    b       1f
-0:
-    wfe
+    add     w4, w1, #1
+    stlxr   w3, w4, [x12]
+    cbnz    w3, mask_lock
+    cmp     w1, #0
+    beq     1f
+    /* decrement and try again */
+mask_unlock1:
+    ldaxr   w1, [x12]
+    sub     w4, w1, #1
+    stlxr   w3, w4, [x12]
+    cbnz    w3, mask_unlock1
     b       mask_lock
 
 1:
@@ -1057,10 +927,12 @@ mask_loop:
     str     x3, [x15, ARM_GITS_CWRITER]
     dsb sy
 
-    /* release lock - InterruptUnlock() */
-    stlr	wzr, [x12]
-    dsb sy
-    sev
+    /* release lock - atomic_sub(&lock, 1) */
+mask_unlock2:
+    ldaxr   w1, [x12]
+    sub     w4, w1, #1
+    stlxr   w3, w4, [x12]
+    cbnz    w3, mask_unlock2
 
     mov     x0, #0
     ret
@@ -1134,16 +1006,26 @@ CALLOUT_START(interrupt_unmask_gic_v3_lpi_its, 0, lpi_its_patch)
      *    x7  - offset of LPI vector entry to unmask/enable
      *    x1 - x6 - scratch
     */
-    /* Obtain spinlock - InterruptLock() */
-    mov     w4, #1
+    /*
+     * wait for spinlock available
+     *    while atomic_add_value(&lock, 1) != 0)
+     *    {
+     *        atomic_sub(&lock, 1);
+     *    }
+    */
 unmask_lock:
     ldaxr   w1, [x12]
-    cbnz    w1, 0f
-    stxr    w1, w4, [x12]
-    cbnz    w1, unmask_lock
-    b       1f
-0:
-    wfe
+    add     w4, w1, #1
+    stlxr   w3, w4, [x12]
+    cbnz    w3, unmask_lock
+    cmp     w1, #0
+    beq     1f
+    /* decrement and try again */
+unmask_unlock1:
+    ldaxr   w1, [x12]
+    sub     w4, w1, #1
+    stlxr   w3, w4, [x12]
+    cbnz    w3, unmask_unlock1
     b       unmask_lock
 
 1:
@@ -1203,12 +1085,23 @@ unmask_loop:
     str     x3, [x15, ARM_GITS_CWRITER]
 	dsb sy
 
-    /* release lock - InterruptUnlock() */
-    stlr	wzr, [x12]
-    dsb sy
-    sev
+    /* release lock - atomic_sub(&lock, 1) */
+unmask_unlock2:
+    ldaxr   w1, [x12]
+    sub     w4, w1, #1
+    stlxr   w3, w4, [x12]
+    cbnz    w3, unmask_unlock2
 
     mov     x0, #0
     ret
 
 CALLOUT_END(interrupt_unmask_gic_v3_lpi_its)
+
+
+#ifdef __QNXNTO__
+#ifdef __USESRCVERSION
+.section .ident, "SM",%progbits,1;
+.asciz "$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/startup/lib/aarch64/callout_interrupt_gic_v3.S $ $Rev: 944535 $";
+.previous
+#endif
+#endif

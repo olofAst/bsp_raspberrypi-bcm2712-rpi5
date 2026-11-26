@@ -1,24 +1,3 @@
-/*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
 #
 # Copyright 2014, QNX Software Systems. 
 # 
@@ -44,7 +23,7 @@
  * This should be usable by any board that uses a LINFLexD UART.
  */
 
-#include <aarch64/callout.ah>
+#include "callout.ah"
 #include <hw/linflexd.h>
 
 
@@ -167,3 +146,11 @@ CALLOUT_START(break_detect_linflexd, 0, patch_debug)
 	mov		w0, #0
 	ret
 CALLOUT_END(break_detect_linflexd)
+
+#ifdef __QNXNTO__
+#ifdef __USESRCVERSION
+.section .ident, "SM",%progbits,1;
+.asciz "$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/startup/lib/aarch64/callout_debug_linflexd.S $ $Rev: 937002 $";
+.previous
+#endif
+#endif

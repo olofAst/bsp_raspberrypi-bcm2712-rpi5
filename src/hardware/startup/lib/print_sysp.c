@@ -1,25 +1,4 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC:
  * Copyright 2014, QNX Software Systems.
  *
@@ -61,8 +40,8 @@
 
 
 #define NUM_ELTS(__array)	(sizeof(__array)/sizeof(__array[0]))
-#define MAX_BUFF_SIZE		80U
 
+#include "startup.h"
 #include "print_sysp.h"
 
 static void
@@ -75,7 +54,7 @@ print_typed_strings(void) {
 	i = 0;
 	for( ;; ) {
 		type_ptr = &string->data[i];
-		type = (*(uint32_t *)type_ptr);
+		type = PSP_NATIVE_ENDIAN32(*(uint32_t *)type_ptr);
 		if(type == _CS_NONE) break;
 		i += sizeof(uint32_t);
 		kprintf("  off:%d type:%d string:'%s'\n", i-sizeof(uint32_t), type, &string->data[i]);
@@ -91,15 +70,14 @@ print_strings(void) {
 	char		*start = p;
 	unsigned	off;
 	unsigned	len;
-	char		buff[MAX_BUFF_SIZE];
+	char		buff[80];
 
 	kprintf(" ");
 	off = 1;
 	while(*p != '\0') {
-		PSP_SNPRINTF(buff, MAX_BUFF_SIZE, " [%d]'%s'", (unsigned)(p - start), p);
-		buff[MAX_BUFF_SIZE - 1] = '\0';
-		len = (unsigned)strlen(buff);
-		if((off + len) >= MAX_BUFF_SIZE) {
+		PSP_SPRINTF(buff, " [%d]'%s'", (unsigned)(p - start), p);
+		len = strlen(buff);
+		if((off + len) >= 80) {
 			kprintf("\n ");
 			off = 1;
 		}
@@ -115,14 +93,35 @@ static void
 print_system_private(void) {
 	struct system_private_entry	*private = _SYSPAGE_ENTRY(PSP_SYSPAGE,system_private);
 
-	kprintf("  syspage ptr user:%v kernel:%v\n", private->user_syspageptr, private->kern_syspageptr);
-	kprintf("  cpupage ptr user:%v kernel:%v spacing:%d\n", private->user_cpupageptr, private->kern_cpupageptr, private->cpupage_spacing);
-	kprintf("  kdebug info:%v callback:%v num_ready:%u\n", private->kdebug_info, private->kdebug_call, private->num_ready);
-	kprintf("  pagesize:%x flags:%x, kdinfo:%x\n",
-			private->pagesize,
-			private->private_flags,
-			private->kdump_info);
+	kprintf("  syspage ptr user:%v kernel:%v\n", PSP_NATIVE_ENDIANPTR(private,user_syspageptr), PSP_NATIVE_ENDIANPTR(private,kern_syspageptr));
+	kprintf("  cpupage ptr user:%v kernel:%v spacing:%d\n", PSP_NATIVE_ENDIANPTR(private,user_cpupageptr), PSP_NATIVE_ENDIANPTR(private,kern_cpupageptr), PSP_NATIVE_ENDIAN32(private->cpupage_spacing));
+	kprintf("  kdebug info:%v callback:%v num_ready:%u\n", PSP_NATIVE_ENDIANPTR(private,kdebug_info), PSP_NATIVE_ENDIANPTR(private,kdebug_call), PSP_NATIVE_ENDIAN32(private->num_ready));
+	kprintf("  pagesize:%x flags:%x, kdinfo:%x tracebuf:%v\n",
+			PSP_NATIVE_ENDIAN32(private->pagesize),
+			PSP_NATIVE_ENDIAN32(private->private_flags),
+			PSP_NATIVE_ENDIAN32(private->kdump_info),
+			PSP_NATIVE_ENDIANPTR(private,tracebuf));
 }
+
+#ifdef PRINT_MEMINFO
+static void
+print_meminfo(void) {
+	struct meminfo_entry *ram = _SYSPAGE_ENTRY(PSP_SYSPAGE,meminfo);
+	int i = 0;
+
+	kprintf(" ");
+	while(ram->type != PSP_NATIVE_ENDIAN32(MEMTYPE_NONE)) {
+		if(++i%4 == 0)
+			kprintf("\n ");
+		kprintf(" t:%d a:%l s:%l",
+			PSP_NATIVE_ENDIAN32(ram->type),
+			PSP_NATIVE_ENDIAN32(ram->addr),
+			PSP_NATIVE_ENDIAN32(ram->size));
+		++ram;
+	}
+	kprintf("\n");
+}
+#endif
 
 
 static char *
@@ -146,12 +145,12 @@ asinfo_string_name(struct asinfo_entry *base, struct asinfo_entry *curr) {
 		new->next = chain;
 		new->as = curr;
 		chain = new;
-		own = curr->owner;
+		own = PSP_NATIVE_ENDIAN16(curr->owner);
 		if(own == AS_NULL_OFF) break;
 		curr = (struct asinfo_entry *)((uint8_t *)base + own);
 	}
 	while(chain != NULL) {
-		kprintf("/%s", get_string(chain->as->name));
+		kprintf("/%s", get_string(PSP_NATIVE_ENDIAN16(chain->as->name)));
 		chain = chain->next;
 	}
 }
@@ -165,11 +164,18 @@ print_an_asinfo(const syspage_entry_info *const info, unsigned const elsize) {
 
 	num = info->entry_size / elsize;
 	for(i = 0; i < num; ++i) {
-		kprintf("  %w) %L-%L o:%w ",
+		kprintf("  %w) %L-%L o:%w a:%w p:%d ",
 				i*sizeof(*as),
-				as->start,
-				as->end,
-				as->owner);
+				PSP_NATIVE_ENDIAN64(as->start),
+				PSP_NATIVE_ENDIAN64(as->end),
+				PSP_NATIVE_ENDIAN16(as->owner),
+				PSP_NATIVE_ENDIAN16(as->attr),
+				PSP_NATIVE_ENDIAN16(as->priority));
+		if(as->alloc_checker64==0) {
+			kprintf("c:0 n:");
+		} else {
+			kprintf("c:%v n:", PSP_NATIVE_ENDIANPTR(as,alloc_checker));
+		}
 #if defined(PSP_STARTUP)
 		kprintf("%d\n", as->name);
 #else
@@ -185,6 +191,13 @@ print_asinfo(void) {
 	print_an_asinfo((syspage_entry_info *)&PSP_SYSPAGE->asinfo, _SYSPAGE_ELEMENT_SIZE(PSP_SYSPAGE, asinfo));
 }
 
+#if !defined(PSP_STARTUP)
+static void
+print_old_asinfo(void) {
+	print_an_asinfo(&PSP_SYSPAGE->old_asinfo, sizeof(struct asinfo_entry));
+}
+#endif
+
 
 static void
 print_hwinfo(void) {
@@ -195,20 +208,20 @@ print_hwinfo(void) {
 
 	while(tag->prefix.size != 0) {
 		next = (hwi_tag *)((uint32_t *)tag +
-			tag->prefix.size);
+			PSP_NATIVE_ENDIAN16(tag->prefix.size));
 		base = (void *)(&tag->prefix + 1);
-		name = get_string(tag->prefix.name);
+		name = get_string(PSP_NATIVE_ENDIAN16(tag->prefix.name));
 		kprintf("  %d) size:%d tag:%d(%s)",
 				hwi_tag2off(tag),
-				tag->prefix.size,
-				tag->prefix.name, name);
+				PSP_NATIVE_ENDIAN16(tag->prefix.size),
+				PSP_NATIVE_ENDIAN16(tag->prefix.name), name);
 		if(*name >= 'A' && *name <= 'Z') {
 			base = (void *) (&tag->item + 1);
 			kprintf(" isize:%d, iname:%d(%s), owner:%d, kids:%d",
-					tag->item.itemsize,
-					tag->item.itemname,
-					get_string(tag->item.itemname),
-					tag->item.owner, tag->item.kids);
+					PSP_NATIVE_ENDIAN16(tag->item.itemsize),
+					PSP_NATIVE_ENDIAN16(tag->item.itemname),
+					get_string(PSP_NATIVE_ENDIAN16(tag->item.itemname)),
+					PSP_NATIVE_ENDIAN16(tag->item.owner), PSP_NATIVE_ENDIAN16(tag->item.kids));
 		}
 		if(base != next) {
 			kprintf("\n    ");
@@ -229,25 +242,38 @@ static void
 print_qtime(void) {
 	struct qtime_entry *qtime = _SYSPAGE_ENTRY(PSP_SYSPAGE,qtime);
 
-	kprintf("  boot:%x CPS:%L period/scale:%d/-%d intr:%d\n",
-		qtime->boot_time,
-		qtime->cycles_per_sec,
-		qtime->timer_period,
-		-(int)qtime->timer_scale,
-		(int)qtime->intr
+	kprintf("  boot:%x CPS:%L rate/scale:%d/-%d intr:%d\n",
+		PSP_NATIVE_ENDIAN32(qtime->boot_time),
+		PSP_NATIVE_ENDIAN64(qtime->cycles_per_sec),
+		PSP_NATIVE_ENDIAN32(qtime->timer_rate),
+		-(int)PSP_NATIVE_ENDIAN32(qtime->timer_scale),
+		(int)PSP_NATIVE_ENDIAN32(qtime->intr)
 		);
-	kprintf("  flags:%x epoch:%d rr_mul:%d adj count/inc:%d/%d\n",
-		qtime->flags,
-		qtime->epoch,
-		qtime->rr_interval_mul,
-		qtime->adjust.tick_count,
-		qtime->adjust.tick_nsec_inc);
+	unsigned load_hi;
+	uint64_t load_max;
+#if defined(QTIME_HAS_TIMER_LOAD_HI)
+	load_hi = qtime->timer_load_hi;
+	load_max = qtime->timer_load_max;
+#else
+	load_hi = 0;
+	load_max = 0;
+#endif
+	kprintf("  flags:%x load:%u+%u epoch:%d rr_mul:%d adj count/inc:%d/%d\n",
+		PSP_NATIVE_ENDIAN32(qtime->flags),
+		load_hi,
+		PSP_NATIVE_ENDIAN32(qtime->timer_load),
+		PSP_NATIVE_ENDIAN32(qtime->epoch),
+		PSP_NATIVE_ENDIAN32(qtime->rr_interval_mul),
+		PSP_NATIVE_ENDIAN32(qtime->adjust.tick_count),
+		PSP_NATIVE_ENDIAN32(qtime->adjust.tick_nsec_inc));
 
 #if !defined(PSP_STARTUP)
-	kprintf("  nsec_inc:%x\n",
-			qtime->nsec_inc);
+	kprintf("  nsec:%L stable:%L inc:%x\n",
+			PSP_NATIVE_ENDIAN64(qtime->nsec),
+			PSP_NATIVE_ENDIAN64(qtime->nsec_stable),
+			PSP_NATIVE_ENDIAN32(qtime->nsec_inc));
 #endif
-	kprintf("  nsec_tod_adj:%L load_max:%L\n", qtime->nsec_tod_adjust, qtime->timer_load_max);
+	kprintf("  nsec_tod_adj:%L load_max:%L\n", PSP_NATIVE_ENDIAN64(qtime->nsec_tod_adjust), load_max);
 }
 
 
@@ -259,13 +285,16 @@ print_an_cpuinfo(const syspage_entry_info *const info, unsigned const elsize) {
 	for(i = 0; i < (unsigned)PSP_SYSPAGE->num_cpu; ++i) {
 		kprintf("  %d) cpu:%x flg:%x spd:%d hwid:%x cache i/d:%d/%d name:%d\n",
 			i,
-			cpu->cpu,
-			cpu->flags,
-			cpu->speed,
-			cpu->smp_hwcoreid,
+			PSP_NATIVE_ENDIAN32(cpu->cpu),
+			PSP_NATIVE_ENDIAN32(cpu->flags),
+			PSP_NATIVE_ENDIAN32(cpu->speed),
+			PSP_NATIVE_ENDIAN32(cpu->smp_hwcoreid),
 			cpu->ins_cache,
 			cpu->data_cache,
-			cpu->name);
+			PSP_NATIVE_ENDIAN16(cpu->name));
+#if !defined(PSP_STARTUP)
+		kprintf("     history:%L\n", PSP_NATIVE_ENDIAN64(cpu->idle_history));
+#endif
 		cpu = SYSPAGE_ARRAY_ADJ_OFFSET(cpuinfo, cpu, elsize);
 	}
 }
@@ -274,6 +303,13 @@ static void
 print_cpuinfo(void) {
 	print_an_cpuinfo((syspage_entry_info *)&PSP_SYSPAGE->cpuinfo, _SYSPAGE_ELEMENT_SIZE(PSP_SYSPAGE, cpuinfo));
 }
+
+#if !defined(PSP_STARTUP)
+static void
+print_old_cpuinfo(void) {
+	print_an_cpuinfo(&PSP_SYSPAGE->old_cpuinfo, sizeof(struct cpuinfo_entry));
+}
+#endif
 
 static void
 print_an_cacheattr(const syspage_entry_info *const info, unsigned const elsize) {
@@ -285,12 +321,12 @@ print_an_cacheattr(const syspage_entry_info *const info, unsigned const elsize) 
 	for(i = 0; i < num; ++i ) {
 		kprintf("  %d) flags:%b size:%w #lines:%w ways:%w control:%v next:%d\n",
 			i,
-			cache->flags,
-			cache->line_size,
-			cache->num_lines,
-			cache->ways,
-			cache->control,
-			cache->next);
+			PSP_NATIVE_ENDIAN32(cache->flags),
+			PSP_NATIVE_ENDIAN32(cache->line_size),
+			PSP_NATIVE_ENDIAN32(cache->num_lines),
+			PSP_NATIVE_ENDIAN16(cache->ways),
+			PSP_NATIVE_ENDIANPTR(cache,control),
+			PSP_NATIVE_ENDIAN32(cache->next));
 		cache = SYSPAGE_ARRAY_ADJ_OFFSET(cacheattr, cache, elsize);
 	}
 }
@@ -300,32 +336,62 @@ print_cacheattr(void) {
 	print_an_cacheattr((syspage_entry_info *)&PSP_SYSPAGE->cacheattr, _SYSPAGE_ELEMENT_SIZE(PSP_SYSPAGE, cacheattr));
 }
 
+#if !defined(PSP_STARTUP)
+static void
+print_old_cacheattr(void) {
+	print_an_cacheattr(&PSP_SYSPAGE->old_cacheattr, sizeof(struct cacheattr_entry));
+}
+#endif
+
 
 static void
 print_callout(void) {
 	struct callout_entry	*call = _SYSPAGE_ENTRY(PSP_SYSPAGE,callout);
 	unsigned				i;
 
-	kprintf("  reboot:%v watchdog:%v\n",
-		call->reboot,
-		call->debug_watchdog);
+	kprintf("  reboot:%v power:%v watchdog:%v\n",
+		PSP_NATIVE_ENDIANPTR(call,reboot),
+		PSP_NATIVE_ENDIANPTR(call,power),
+		PSP_NATIVE_ENDIANPTR(call,debug_watchdog));
+	kprintf("  timer_load:%v reload:%v value:%v\n",
+			PSP_NATIVE_ENDIANPTR(call,timer_load),
+			PSP_NATIVE_ENDIANPTR(call,timer_reload),
+			PSP_NATIVE_ENDIANPTR(call,timer_value));
 	for(i = 0; i < 2; ++i) {
-    struct debug_callout	*dbg = &call->debug[i];
+#if defined(PSP_STARTUP)
+		struct debug_callout	*dbg = &call->debug[i];
 
-    kprintf("  %d) display:%v poll:%v break:%v\n", i,
-        dbg->display_char,
-        dbg->poll_key,
-        dbg->break_detect);
+		kprintf("  %d) display:%v poll:%v break:%v\n", i,
+			PSP_NATIVE_ENDIANPTR(dbg,display_char),
+			PSP_NATIVE_ENDIANPTR(dbg,poll_key),
+			PSP_NATIVE_ENDIANPTR(dbg,break_detect));
+#else
+		if(PSP_SYSPAGE->type & SYSPAGE_64BIT) {
+			struct debug_callout64	*dbg = &call->debug64[i];
+
+			kprintf("  %d) display:%L poll:%L break:%L\n", i,
+				PSP_NATIVE_ENDIAN64(dbg->display_char64),
+				PSP_NATIVE_ENDIAN64(dbg->poll_key64),
+				PSP_NATIVE_ENDIAN64(dbg->break_detect64));
+		} else {
+			struct debug_callout32	*dbg = &call->debug32[i];
+
+			kprintf("  %d) display:%x poll:%x break:%x\n", i,
+				PSP_NATIVE_ENDIAN32(dbg->display_char32),
+				PSP_NATIVE_ENDIAN32(dbg->poll_key32),
+				PSP_NATIVE_ENDIAN32(dbg->break_detect32));
+		}
+#endif
 	}
 }
 
 static void
-print_intrgen(char *name, struct __intrgen_data *gen) {
+print_intrgen(char *name, struct __intrgen_data64 *gen) {
 	kprintf("     %s => flags:%w, size:%w, rtn:%v\n",
 		name,
-		gen->genflags,
-		gen->size,
-		gen->rtn);
+		PSP_NATIVE_ENDIAN16(gen->genflags),
+		PSP_NATIVE_ENDIAN16(gen->size),
+		PSP_NATIVE_ENDIANPTR(gen,rtn));
 }
 
 static void
@@ -339,107 +405,172 @@ print_intrinfo(void) {
 	for( i = 0; i < num; ++i ) {
 		kprintf("  %d) vector_base:%x, #vectors:%d, cascade_vector:%x\n",
 				i,
-				intr->vector_base,
-				intr->num_vectors,
-				intr->cascade_vector);
+				PSP_NATIVE_ENDIAN32(intr->vector_base),
+				PSP_NATIVE_ENDIAN32(intr->num_vectors),
+				PSP_NATIVE_ENDIAN32(intr->cascade_vector));
 		kprintf("     cpu_intr_base:%x, cpu_intr_stride:%d, flags:%w, local_stride:%d\n",
-				intr->cpu_intr_base,
-				intr->cpu_intr_stride,
-				intr->flags,
-				intr->local_stride);
+				PSP_NATIVE_ENDIAN32(intr->cpu_intr_base),
+				PSP_NATIVE_ENDIAN16(intr->cpu_intr_stride),
+				PSP_NATIVE_ENDIAN16(intr->flags),
+				PSP_NATIVE_ENDIAN32(intr->local_stride));
 		print_intrgen(" id", &intr->id);
 		print_intrgen("eoi", &intr->eoi);
 
 		kprintf("     mask:%v, unmask:%v, config:%v\n",
-			intr->mask,
-			intr->unmask,
-			intr->config);
-		intr = SYSPAGE_ARRAY_ADJ_OFFSET(intrinfo, intr, elsize);
+			PSP_NATIVE_ENDIANPTR(intr,mask),
+			PSP_NATIVE_ENDIANPTR(intr,unmask),
+			PSP_NATIVE_ENDIANPTR(intr,config));
+		intr = SYSPAGE_ARRAY_ADJ_OFFSET(new_intrinfo, intr, elsize);
 	}
 }
+
+#if !defined(PSP_STARTUP)
+
+static void
+print_old_intrgen(char *name, struct __intrgen_data32 *gen) {
+	kprintf("     %s => flags:%w, size:%w, rtn:%x\n",
+		name,
+		PSP_NATIVE_ENDIAN16(gen->genflags),
+		PSP_NATIVE_ENDIAN16(gen->size),
+		PSP_NATIVE_ENDIAN32(gen->rtn32));
+}
+
+static void
+print_old_intrinfo(void) {
+ 	struct old_intrinfo_entry *intr = _SYSPAGE_ENTRY(PSP_SYSPAGE,old_intrinfo);
+	int						num;
+	int						i;
+
+	num = _SYSPAGE_ENTRY_SIZE(PSP_SYSPAGE, old_intrinfo) / sizeof(*intr);
+	for( i = 0; i < num; ++i ) {
+		kprintf("  %d) vector_base:%x, #vectors:%d, cascade_vector:%x\n",
+				i,
+				PSP_NATIVE_ENDIAN32(intr->vector_base),
+				PSP_NATIVE_ENDIAN32(intr->num_vectors),
+				PSP_NATIVE_ENDIAN32(intr->cascade_vector));
+		kprintf("     cpu_intr_base:%x, cpu_intr_stride:%d, flags:%w\n",
+				PSP_NATIVE_ENDIAN32(intr->cpu_intr_base),
+				PSP_NATIVE_ENDIAN16(intr->cpu_intr_stride),
+				PSP_NATIVE_ENDIAN16(intr->flags));
+		print_old_intrgen(" id", &intr->id);
+		print_old_intrgen("eoi", &intr->eoi);
+
+		kprintf("     mask:%x, unmask:%x, config:%x\n",
+			PSP_NATIVE_ENDIAN32(intr->mask32),
+			PSP_NATIVE_ENDIAN32(intr->unmask32),
+			PSP_NATIVE_ENDIAN32(intr->config32));
+		intr = SYSPAGE_ARRAY_ADJ_OFFSET(old_intrinfo, intr, sizeof(*intr));
+	}
+}
+#endif
 
 static void
 print_smp(void) {
 	struct smp_entry *smp = _SYSPAGE_ENTRY(PSP_SYSPAGE,smp);
 
-	kprintf("  send_ipi:%v\n", smp->send_ipi);
+	kprintf("  send_ipi:%v cpu:%x cpu2:%L\n",
+		PSP_NATIVE_ENDIANPTR(smp,send_ipi),
+		PSP_NATIVE_ENDIAN32(smp->cpu),
+		PSP_NATIVE_ENDIAN64(smp->cpu2));
 }
 
 static void
-print_hypinfo(void)
-{
-    const struct hypinfo_entry * const hypinfo = _SYSPAGE_ENTRY(PSP_SYSPAGE, hypinfo);
+print_pminfo(void) {
+	struct pminfo_entry *pm = _SYSPAGE_ENTRY(PSP_SYSPAGE,pminfo);
 
-    const char *virt_name;
-    if (PSP_SYSPAGE->type == SYSPAGE_AARCH64) {
-        virt_name = "ARM";
-    } else {
-        switch (HYPINFO_VIRT_GET(hypinfo->flags)) {
-        case HYPINFO_VIRT_VMX:
-            virt_name = "VMX";
-            break;
-        case HYPINFO_VIRT_SVM:
-            virt_name = "SVM";
-            break;
-        default:
-            virt_name = "Unknown";
-            break;
-        }
-    }
-
-    kprintf("  virt:%s flags:%L\n", virt_name, hypinfo->flags);
+	kprintf("  wakeup_pending:%x wakeup_condition:%x\n",
+		PSP_NATIVE_ENDIAN32(pm->wakeup_pending),
+		PSP_NATIVE_ENDIAN32(pm->wakeup_condition));
 }
 
 static void
-print_cluster(void)
-{
-    const struct cluster_entry *cluster = _SYSPAGE_ENTRY(PSP_SYSPAGE, cluster);
-    unsigned const elsize = _SYSPAGE_ELEMENT_SIZE(PSP_SYSPAGE, cluster);
-    unsigned const num = _SYSPAGE_ENTRY_SIZE(PSP_SYSPAGE, cluster) / elsize;
+print_mdriver(void) {
+	struct new_mdriver_entry *md = _SYSPAGE_ENTRY(PSP_SYSPAGE,new_mdriver);
+	int						num;
+	int						i;
 
-    for (unsigned i = 0; i < num; ++i) {
-        kprintf("  %d) cpumask:%L name:%d(%s)\n",
-            i, cluster->cpumask, cluster->name, get_string(cluster->name));
-        cluster = SYSPAGE_ARRAY_ADJ_OFFSET(cluster, cluster, elsize);
-    }
+	unsigned const elsize = _SYSPAGE_ELEMENT_SIZE(PSP_SYSPAGE,new_mdriver);
+	num = _SYSPAGE_ENTRY_SIZE(PSP_SYSPAGE,new_mdriver) / elsize;
+	for(i = 0; i < num; ++i) {
+		kprintf("  %d) name=%d, intr=%x, rtn=%v, paddr=%L, size=%d\n", i,
+				PSP_NATIVE_ENDIAN32(md->name),
+				PSP_NATIVE_ENDIAN32(md->intr),
+				PSP_NATIVE_ENDIANPTR(md,handler),
+				PSP_NATIVE_ENDIAN64(md->data_paddr),
+				PSP_NATIVE_ENDIAN32(md->data_size));
+		md = SYSPAGE_ARRAY_ADJ_OFFSET(new_mdriver, md, elsize);
+	}
 }
 
-#define SYSPAGE_TYPE_MASK	0x0000ffffu
-#define ARRAY_SECTION		0x80000000u
-#define INFO_SECTION		0x40000000u
-#define IMPLICIT_DISABLE    0x20000000u
-#define EXPLICIT_DISABLE    0x10000000u
-#define EXPLICIT_ENABLE     0x08000000u
+#if !defined(PSP_STARTUP)
+void
+print_old_mdriver(void) {
+	struct old_mdriver_entry *md = _SYSPAGE_ENTRY(PSP_SYSPAGE,old_mdriver);
+	int						num;
+	int						i;
+
+	num = _SYSPAGE_ENTRY_SIZE(PSP_SYSPAGE,old_mdriver) / sizeof(*md);
+	for(i = 0; i < num; ++i) {
+		kprintf("  %d) name=%d, intr=%x, rtn=%x, paddr=%x, size=%d\n", i,
+				PSP_NATIVE_ENDIAN32(md->name),
+				PSP_NATIVE_ENDIAN32(md->intr),
+				PSP_NATIVE_ENDIAN32(md->handler32),
+				PSP_NATIVE_ENDIAN32(md->data_paddr),
+				PSP_NATIVE_ENDIAN32(md->data_size));
+		md = SYSPAGE_ARRAY_ADJ_OFFSET(old_mdriver, md, sizeof(*md));
+	}
+}
+#endif
+
+#define SYSPAGE_TYPE_MASK	0x01ffu
+#define BC_SECTION			0x0200u
+#define ARRAY_SECTION		0x0400u
+#define INFO_SECTION		0x0800u
+#define IMPLICIT_DISABLE	0x1000u
+#define EXPLICIT_DISABLE	0x2000u
+#define EXPLICIT_ENABLE		0x4000u
 
 struct debug_syspage_section {
 	const char 		*name;
-	unsigned	    loc;
-	unsigned	    flags;
+	unsigned short	loc;
+	unsigned short	flags;
 	void			(*print)(void);
 };
 
 #define PRT_SYSPAGE_RTN(name, array)	\
-	{ #name, (unsigned)offsetof(struct syspage_entry, name), INFO_SECTION|(array), print_##name }
+	{ #name, (unsigned short)offsetof(struct syspage_entry, name), INFO_SECTION|(array), print_##name }
 
 #define CPU_PRT_SYSPAGE_RTN(upper_cpu, lower_cpu, flags, name)	\
-	{ #name, (unsigned)offsetof(struct syspage_entry, un.lower_cpu.name), \
+	{ #name, (unsigned short)offsetof(struct syspage_entry, un.lower_cpu.name), \
 		(flags) + (SYSPAGE_##upper_cpu+1), \
 		lower_cpu##_print_##name }
+
+#if defined(PSP_STARTUP)
+	#define PRT_SYSPAGE_RTN_BC(name)
+#else
+	#define PRT_SYSPAGE_RTN_BC(name) PRT_SYSPAGE_RTN(name,BC_SECTION|IMPLICIT_DISABLE),
+#endif
 
 static struct debug_syspage_section sp_section[] = {
 	PRT_SYSPAGE_RTN(system_private,0),
 	PRT_SYSPAGE_RTN(qtime,0),
 	PRT_SYSPAGE_RTN(callout,0),
+//	PRT_SYSPAGE_RTN(callin),
 	PRT_SYSPAGE_RTN(cpuinfo,ARRAY_SECTION),
+	PRT_SYSPAGE_RTN_BC(old_cpuinfo)
 	PRT_SYSPAGE_RTN(cacheattr,ARRAY_SECTION),
+	PRT_SYSPAGE_RTN_BC(old_cacheattr)
 	PRT_SYSPAGE_RTN(asinfo,ARRAY_SECTION),
+	PRT_SYSPAGE_RTN_BC(old_asinfo)
 	PRT_SYSPAGE_RTN(hwinfo,0),
 	PRT_SYSPAGE_RTN(typed_strings,0),
 	PRT_SYSPAGE_RTN(strings,0),
 	PRT_SYSPAGE_RTN(intrinfo,ARRAY_SECTION),
+	PRT_SYSPAGE_RTN_BC(old_intrinfo)
 	PRT_SYSPAGE_RTN(smp,0),
-    PRT_SYSPAGE_RTN(hypinfo,0),
-    PRT_SYSPAGE_RTN(cluster,ARRAY_SECTION),
+	PRT_SYSPAGE_RTN(pminfo,0),
+	PRT_SYSPAGE_RTN(mdriver,ARRAY_SECTION),
+	PRT_SYSPAGE_RTN_BC(old_mdriver)
 // This second include of print_sysp.h will cause the CPU_PRT_SYSPAGE_RTN
 // definitions for the various routines to be added.
 #include "print_sysp.h"
@@ -479,13 +610,59 @@ print_syspage_sections(void) {
 	unsigned	flags;
 	unsigned	type;
 
-	kprintf("Header size=0x%x, Total Size=0x%x, Version=%d.%d, #Cpu=%d, Type=%d\n",
+	kprintf("Header size=0x%x, Total Size=0x%x, #Cpu=%d, Type=%d\n",
 		PSP_SYSPAGE->size,
 		PSP_SYSPAGE->total_size,
-        PSP_SYSPAGE->version.major,
-        PSP_SYSPAGE->version.minor,
 		PSP_SYSPAGE->num_cpu,
 		PSP_SYSPAGE->type);
+#if !defined(PSP_STARTUP)
+		for(i = 0; i < NUM_ELTS(sp_section); ++i) {
+			flags = sp_section[i].flags;
+			if(flags & EXPLICIT_ENABLE) {
+				flags &= ~IMPLICIT_DISABLE;
+			}
+			type = flags & SYSPAGE_TYPE_MASK;
+			if((type != 0) && (type != (PSP_SYSPAGE->type + 1))) {
+				// Not a section on this system page
+				flags |= EXPLICIT_DISABLE;
+			}
+			if(!(flags & (EXPLICIT_DISABLE|IMPLICIT_DISABLE))) {
+				syspage_array_info	  *info = (void *)((uint8_t *)PSP_SYSPAGE + sp_section[i].loc);
+				if(sp_section[i].flags & ARRAY_SECTION) {
+					if(sp_section[i].loc > PSP_SYSPAGE->size) {
+						// We don't have the sized array, show the
+						// backwards compact section
+						sp_section[i+1].flags &= ~IMPLICIT_DISABLE;
+					} else if(info->entry_size == 0) {
+						syspage_array_info	  *bc_info = (void *)((uint8_t *)PSP_SYSPAGE + sp_section[i+1].loc);
+						if(bc_info->entry_size != 0) {
+							// We don't have any information in
+							// the array section, but there's something
+							// in the backwards compat one, so show that
+							sp_section[i+1].flags &= ~IMPLICIT_DISABLE;
+						}
+					}
+				}
+				if(syspage_cross_endian) {
+					/* need to swap the various section's
+					 * entry_off/entry_size fields ahead of time
+					 * since some sections depend on other sections
+					 * (for example asinfo and hwinfo are printing data
+					 * from the strings section)
+					 */
+					if(sp_section[i].loc < PSP_SYSPAGE->size) {
+						if(sp_section[i].flags & INFO_SECTION) {
+							ENDIAN_SWAP16(&info->entry_off);
+							ENDIAN_SWAP16(&info->entry_size);
+							if(sp_section[i].flags & ARRAY_SECTION) {
+								ENDIAN_SWAP16(&info->element_size);
+							}
+						}
+					}
+				}
+			}
+		}
+#endif
 
 	for(i = 0; i < NUM_ELTS(sp_section); ++i) {
 		flags = sp_section[i].flags;
@@ -524,3 +701,8 @@ print_syspage_sections(void) {
 		}
 	}
 }
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/startup/lib/print_sysp.c $ $Rev: 933874 $")
+#endif

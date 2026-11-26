@@ -1,24 +1,3 @@
-/*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
 #
 # Copyright 2014, QNX Software Systems.
 #
@@ -47,18 +26,18 @@
 	.text
 	.align	2
 
+	.extern	_start_el1
 	.extern aarch64_cache_flush
 	.global	smp_start
 
 smp_start:
 	/*
-	 * We don't yet know if hypervisor support will be needed so switch to EL2
-	 * with interrupts disabled (and if EL2 is not available, switch EL1)
+	 * Switch to EL1 if necessary
 	 */
-	bl		_start_el2_or_el1
+	bl		_start_el1
 
 	/*
-	 * Install default exception vector table that loops on exception entry.
+	 * Install a default exception vector table loops on exception entry.
 	 * This allows us to inspect the elr_el1 and esr_el1 registers from a
 	 * debugger to see what exception occurred.
 	 */
@@ -71,9 +50,7 @@ smp_start:
 	bl		aarch64_cache_flush
 
 	/*
-	 * Set up stack. Note that all secondary cores use this same
-	 * stack address and so are serialized during startup to avoid
-	 * tripping over one another.
+	 * Set up stack
 	 */
 	adr		x0, stack
 	mov		sp, x0
@@ -86,12 +63,6 @@ smp_start:
 	sub		w0, w0, #1
 	bl		board_smp_adjust_num
 	mov		w19, w0
-
-	/*
-	 * hypervisor_init(w0=cpunum)
-	 * returns at EL1 or EL2 depending on what has been requested
-	 */
-	bl		hypervisor_init
 
 	/*
 	 * Perform any custom cpu startup operations
@@ -134,3 +105,11 @@ smp_start:
 	.align	4
 	.space	8192
 stack:
+
+#ifdef __QNXNTO__
+#ifdef __USESRCVERSION
+.section .ident, "SM",%progbits,1;
+.asciz "$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/startup/lib/aarch64/smp_start.S $ $Rev: 890008 $";
+.previous
+#endif
+#endif

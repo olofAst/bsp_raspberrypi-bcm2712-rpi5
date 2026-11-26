@@ -1,25 +1,4 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
 * $QNXLicenseC:
 * Copyright 2017, QNX Software Systems.
 *
@@ -40,47 +19,26 @@
 * $
 */
 
-/* For 64KiB translation granule
-* 512 MiB blocks
+/* For 64KB translation granule
+* 512 MB blocks
 * TLB level 2 block descriptor format:
 *        bit[0]: valid
 *        bit[1]: 0-block,1-table
 *        bit[5:2]: MemAttr
 *        bit[10]: Access flag
 *        bit[47:29]: addr
-*
-* For 4KiB translation granule
-* 1 GiB blocks
-* TLB level 1 block descriptor format:
-*        bit[0]: valid
-*        bit[1]: 0-block,1-table
-*        bit[5:2]: MemAttr
-*        bit[10]: Access flag
-*        bit[47:30]: addr
 */
 
 #ifndef __AARCH64_TLB_H__
 #define __AARCH64_TLB_H__
 
-//#define USE_4K_PT_SETUP (1)
-
-
-#if !defined(USE_4K_PT_SETUP)
-/* map 42 bits, 4TiB, 1 L2 page (64k), 512MiB/entry */
-#define TLB_SIZE            (8192)
 #define PAGE_SHIFT          29
-#else
-/* map 39 bits, 512GiB, 1 L1 page (4k), 1GiB/entry */
-#define TLB_SIZE            (512)
-#define PAGE_SHIFT          30
-#endif
-#define PAGE_SIZE           (1UL << PAGE_SHIFT)
-#define BA_MASK             (((1UL<<48)-1) & ~(PAGE_SIZE-1))
+#define PAGE_SIZE           (1 << PAGE_SHIFT)
+#define TLB_SIZE            0x2000
+#define BA_MASK             0xFFFFE0000000
 
-#define VALID               (0x1UL << 0)
-#define AF                  (0x1UL << 10)
-#define ISH                 (0x3UL << 8)
-#define NX                  (0x3UL << 53)
+#define VALID               (0x1 << 0)
+#define AF                  (0x1 << 10)
 
 typedef struct aarch64_tlb {
     uint64_t start;
@@ -101,7 +59,7 @@ static __inline__ void aarch64_setup_tlb(aarch64_tlb_t *table, uint64_t *tlb)
 
         /* uncacheable */
         for (; offset < (base >> PAGE_SHIFT); offset++) {
-            tlb[offset] = NX | (offset << PAGE_SHIFT) | VALID | AF;
+            tlb[offset] = (offset << PAGE_SHIFT) | VALID | AF;
         }
 
         for (; (base >= table->start) && (table->len > base - table->start) && (offset < TLB_SIZE); base += PAGE_SIZE, offset++) {
@@ -114,7 +72,13 @@ static __inline__ void aarch64_setup_tlb(aarch64_tlb_t *table, uint64_t *tlb)
 
     /* uncacheable */
     for (; offset < TLB_SIZE; offset++) {
-        tlb[offset] = NX | (offset << PAGE_SHIFT) | VALID | AF;
+        tlb[offset] = (offset << PAGE_SHIFT) | VALID | AF;
     }
 }
+#endif
+
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/startup/lib/public/aarch64/aarch64_tlb.h $ $Rev: 891625 $")
 #endif

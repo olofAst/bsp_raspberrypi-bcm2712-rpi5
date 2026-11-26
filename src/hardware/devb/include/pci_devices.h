@@ -1,25 +1,4 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC: 
  * Copyright 2008, QNX Software Systems.  
  *  
@@ -39,9 +18,6 @@
  * http://licensing.qnx.com/license-guide/ for other information. 
  * $ 
  */
-
-#ifndef	_PCI_DEVICES_H_INCLUDED
-#define	_PCI_DEVICES_H_INCLUDED
 
 #include <sys/srcversion.h>
 
@@ -531,7 +507,7 @@
 		#define	PCI_DEVICE_ID_INTEL_T_CREEK_2		0x4115	/* Tunnel Creek PCI Host Bridge # 2*/
 		#define	PCI_DEVICE_ID_INTEL_T_CREEK_3		0x4116	/* Tunnel Creek PCI Host Bridge # 3*/
 		#define	PCI_DEVICE_ID_INTEL_T_CREEK_4		0x4117	/* Tunnel Creek PCI Host Bridge # 4*/
-		#define	PCI_DEVICE_ID_INTEL_T_CREEK			(PCI_DEVICE_ID_INTEL_T_CREEK_1)
+		#define	PCI_DEVICE_ID_INTEL_T_CREEK			PCI_DEVICE_ID_INTEL_T_CREEK_1
 
 		#define	PCI_DEVICE_ID_INTEL_SCHP			0x8100	/* Poulsbo SCH */
 		#define	PCI_DEVICE_ID_INTEL_SCH_SDIO1		0x811c
@@ -1126,4 +1102,8 @@
 	#define PCI_DEVICE_ID_LSI_SAS1068E				0x0058
 	#define PCI_DEVICE_ID_LSI_SAS1078				0x0060
 	
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/devb/include/pci_devices.h $ $Rev: 825823 $")
 #endif

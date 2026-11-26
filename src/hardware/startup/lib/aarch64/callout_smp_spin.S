@@ -1,24 +1,3 @@
-/*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
 #
 # Copyright 2014, QNX Software Systems. 
 # 
@@ -38,7 +17,7 @@
 # http://licensing.qnx.com/license-guide/ for other information.
 #
 
-#include <aarch64/callout.ah>
+#include "callout.ah"
 
 /*
  * This code is used as the virtual entry point for secondary processors.
@@ -95,3 +74,11 @@ CALLOUT_START(smp_spin, 0, 0)
 3:	wfi
 	b		3b
 CALLOUT_END(smp_spin)
+
+#ifdef __QNXNTO__
+#ifdef __USESRCVERSION
+.section .ident, "SM",%progbits,1;
+.asciz "$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/startup/lib/aarch64/callout_smp_spin.S $ $Rev: 780681 $";
+.previous
+#endif
+#endif

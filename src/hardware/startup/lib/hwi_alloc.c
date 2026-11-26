@@ -1,25 +1,4 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC:
  * Copyright 2008, QNX Software Systems. 
  * 
@@ -44,7 +23,7 @@
 
 
 
-#include <startup.h>
+#include "startup.h"
 
 //
 // Override __hwi*() definitions in libc
@@ -76,18 +55,13 @@ align_tag(unsigned align) {
 
 void *
 hwi_alloc_tag(const char *name, unsigned size, unsigned align) {
+	uint8_t		*p;
 	hwi_tag		*tag;
 	unsigned	name_off;
 
 	align_tag(align);
 	name_off = add_string(name);
-	unsigned need = size + sizeof(struct hwi_prefix);
-	unsigned spare = lsp.hwinfo.size - offset;
-	if(need > spare) {
-		// grow by chunk of 128 bytes.
-		grow_syspage_section(&lsp.hwinfo, ROUND(need - spare, 128));
-	}
-	uint8_t *p = (uint8_t *)lsp.hwinfo.p->data;
+	p = grow_syspage_section(&lsp.hwinfo, size);
 	tag = (hwi_tag *)(p + last_item);
 	tag->item.itemsize += size / 4;
 	tag = (hwi_tag *)(p + offset);
@@ -133,3 +107,8 @@ hwi_grow_tag(unsigned offset, unsigned size) {
 	offset += size;
 	return(tag);
 }
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/startup/lib/hwi_alloc.c $ $Rev: 680332 $")
+#endif

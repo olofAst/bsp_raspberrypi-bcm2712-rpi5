@@ -1,25 +1,4 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC:
  * Copyright 2016, QNX Software Systems.
  *
@@ -40,7 +19,7 @@
  * $
  */
 
-#include <startup.h>
+#include "startup.h"
 #if defined(__aarch64__)
 #include <aarch64/psci.h>
 #else
@@ -55,9 +34,14 @@ psci_smp_start(unsigned cpu, void (*start)(void)) {
 		psci_cpu_on_cmd = PSCI_CPU_ON;
 	}
 
-	if ((*psci_call)(psci_cpu_on_cmd, psci_cpu_id(cpu), (uintptr_t)start, 0) != PSCI_SUCCESS) {
+	if ((*psci_call)(psci_cpu_on_cmd, cpu, (uintptr_t)start, 0) != PSCI_SUCCESS) {
 		return 0;
 	}
 
 	return 1;
 }
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/startup/lib/common_arm/psci_smp.c $ $Rev: 817976 $")
+#endif

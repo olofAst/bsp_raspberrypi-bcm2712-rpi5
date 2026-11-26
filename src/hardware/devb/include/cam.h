@@ -1,25 +1,4 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC: 
  * Copyright 2008, QNX Software Systems.  
  *  
@@ -54,9 +33,6 @@
 #include <sys/types.h>
 #endif
 
-#ifndef	__QUEUE_H_INCLUDED
-#include <sys/queue.h>
-#endif
 
 struct _sim_hba;
 struct _resmgr_context;
@@ -120,7 +96,7 @@ typedef _Int8t		CAM_I8;
 /* Structure definitions for the CAM control blocks, CCB's for the
 subsystem. */
 
-typedef _Int32t path_id_t;
+typedef _Uint32t path_id_t;
 typedef _Uint32t target_id_t;
 typedef _Uint64t lun_id_t;
 
@@ -201,17 +177,16 @@ typedef struct ccb_relsim
 {
     CCB_HEADER cam_ch;                  /* Header information fields */
 	uint32_t     cam_frozen_count;      /* SIM queue frozen count    */
-} CCB_RELSIM, CCB_FRZSIM;
+} CCB_RELSIM;
 
 /* SCSI I/O Request CCB */
-typedef struct ccb_scsiio CCB_SCSIIO;
-struct ccb_scsiio
+typedef struct ccb_scsiio
 {
     CCB_HEADER cam_ch;               /* Header information fields */
     u_char *cam_pdrv_ptr;            /* Ptr used by the Peripheral driver */
     CCB_HEADER *cam_next_ccb;        /* Ptr to the next CCB for action */
     u_char *cam_req_map;             /* Ptr for mapping info on the Req. */
-    void (*cam_cbfcnp)(CCB_SCSIIO *);/* Callback on completion function */
+    void (*cam_cbfcnp)();            /* Callback on completion function */
     CAM_DATA_UN cam_data;            /* Pointer to the data buf/SG list */
     uint32_t cam_dxfer_len;          /* Data xfer length */
     u_char *cam_sense_ptr;           /* Pointer to the sense data buffer */
@@ -230,11 +205,8 @@ struct ccb_scsiio
     u_short cam_vu_flags;            /* Vendor unique flags */
     u_char cam_tag_action;           /* What to do for tag queuing */
     u_char cam_iorsvd0[3];           /* Reserved field, for alignment */
-    union {
-		TAILQ_ENTRY(ccb_scsiio)	clink;
-	    u_char cam_sim_priv[ SIM_PRIV ]; /* SIM private data area */
-	};
-};
+    u_char cam_sim_priv[ SIM_PRIV ]; /* SIM private data area */
+} CCB_SCSIIO;
 
 /* Set Async Callback CCB */
 typedef struct ccb_setasync
@@ -305,14 +277,13 @@ typedef struct ccb_eng_inq
     uint32_t cam_eng_memory;            /* Returned engine memory size */
 } CCB_ENG_INQ;
 
-typedef struct ccb_eng_exec CCB_ENG_EXEC;
-struct ccb_eng_exec     /* NOTE: must match SCSIIO size */
+typedef struct ccb_eng_exec     /* NOTE: must match SCSIIO size */
 {
     CCB_HEADER cam_ch;               /* Header information fields */
     u_char *cam_pdrv_ptr;            /* Ptr used by the Peripheral driver */
     uint32_t cam_engrsvd0;           /* Reserved field, for alignment */
     u_char *cam_req_map;             /* Ptr for mapping info on the Req. */
-    void (*cam_cbfcnp)(CCB_ENG_EXEC *);/* Callback on completion function */
+    void (*cam_cbfcnp)();            /* Callback on completion function */
     CAM_DATA_UN cam_data;            /* Pointer to the data buf/SG list */
     uint32_t cam_dxfer_len;          /* Data xfer length */
     u_char *cam_engdata_ptr;         /* Pointer to the engine buffer data */
@@ -330,16 +301,15 @@ struct ccb_eng_exec     /* NOTE: must match SCSIIO size */
     u_char cam_engrsvd5;             /* Reserved field, for alignment */
     u_char cam_engrsvd6[3];          /* Reserved field, for alignment */
     u_char cam_sim_priv[ SIM_PRIV ]; /* SIM private data area */
-};
+} CCB_ENG_EXEC;
 
-typedef struct ccb_devctl CCB_DEVCTL;
-struct ccb_devctl
+typedef struct ccb_devctl
 {
     CCB_HEADER cam_ch;               /* Header information fields */
     u_char *cam_pdrv_ptr;            /* Ptr used by the Peripheral driver */
     CCB_HEADER *cam_next_ccb;        /* Ptr to the next CCB for action */
     u_char *cam_req_map;             /* Ptr for mapping info on the Req. */
-    void (*cam_cbfcnp)(CCB_DEVCTL *);      /* Callback on completion function */
+    void (*cam_cbfcnp)();            /* Callback on completion function */
 	struct _resmgr_context *cam_devctl_ctp;
 	uint32_t cam_devctl_dcmd;
 	int    cam_devctl_status;
@@ -349,7 +319,7 @@ struct ccb_devctl
 	int    *cam_devctl_ret;
     uint32_t cam_iorsvd0[8];         /* Reserved field, for alignment */
     u_char cam_sim_priv[ SIM_PRIV ]; /* SIM private data area */
-};
+} CCB_DEVCTL;
 
 /* The CAM_SIM_ENTRY definition is used to define the entry points for
 the SIMs contained in the SCSI CAM subsystem.  Each SIM file will
@@ -536,7 +506,7 @@ SIM's default timeout can take effect. */
 #define CAM_FALSE       0       /* General purpose flag value */
 #define CAM_TRUE        1       /* General purpose flag value */
 
-#define XPT_CCB_INVALID (-1)    /* for signaling a bad CCB to free */
+#define XPT_CCB_INVALID -1      /* for signaling a bad CCB to free */
 
 /* General Union for Kernel Space allocation.  Contains all the possible CCB
 structures.  This union should never be used for manipulating CCB's its only
@@ -591,4 +561,9 @@ typedef struct cam_edt_entry
 
 /* ---------------------------------------------------------------------- */
 
+#endif
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/devb/include/cam.h $ $Rev: 805883 $")
 #endif

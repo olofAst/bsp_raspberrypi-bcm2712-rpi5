@@ -1,27 +1,6 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC:
- * Copyright 2007-2019, 2023, 2025, BlackBerry Limited.
+ * Copyright 2007-2019, QNX Software Systems.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"). You
  * may not reproduce, modify or distribute this software except in
@@ -40,159 +19,132 @@
  * $
  */
 
+
+/*
+#ifdef __USAGE
+%C - Serial driver for PL011 UARTs
+
+%C [options] [port[,irq]] &
+Options:
+ -b number    Define initial baud rate (default 38400)
+ -c clk       Set the input clock rate (default 24000000)
+ -C number    Size of canonical input buffer (default 256)
+ -e           Set options to "edit" mode
+ -E           Set options to "raw" mode (default)
+ -I number    Size of raw input buffer (default 2048)
+ -f           Enable hardware flow control (default)
+ -F           Disable hardware flow control
+ -O number    Size of output buffer (default 2048)
+ -s           Enable software flow control
+ -S           Disable software flow control (default)
+ -t number    Set receive FIFO trigger level ( 0 - 3; default 2 (1 / 2 full))
+ -T number    Set number of characters to send to transmit FIFO
+                                             ( 0 - 3; default 2 (1 / 2 full))
+ -u unit      Set serial unit number (default 1)
+
+#endif
+*/
 #include "externs.h"
 
-int
+unsigned
 options(int argc, char *argv[])
 {
-    int         opt;
-    int         numports = 0;
-    void        *link;
-    unsigned    rx_fifo = 2;    // 1 / 2 full, default
-    unsigned    tx_fifo = 2;    // 1 / 2 full, default
-    uint64_t    val = 0ULL;
-    uint32_t    port_error = 0L;
+	int				opt;
+	int				numports = 0;
+	void			*link;
+	unsigned		unit;
+	unsigned		rx_fifo = 2;	// 1 / 2 full, default
+	unsigned		tx_fifo = 2;	// 1 / 2 full, default
+	TTYINIT_PL011	devinit = {
+		{	0,			// port
+			1,			// port_shift
+			0,			// intr
+			38400,		// baud
+			2048,		// isize
+			2048,		// osize
+			256,		// csize
+			0,			// c_cflag
+			0,			// c_iflag
+			0,			// c_lflag
+			0,			// c_oflag
+			0,			// fifo
+			24000000,	// clk
+			16,			// div
+			"/dev/ser"	// name
+		},
+	};
 
-    TTYINIT_PL011    devinit = {
-        .tty = {
-            .port = 0,
-            .port_shift = 1,
-            .intr = 0,
-            .baud = 38400,
-            .isize = 2048,
-            .osize = 2048,
-            .csize = 256,
-            .c_cflag = 0,
-            .c_iflag = 0,
-            .c_lflag = 0,
-            .c_oflag = 0,
-            .fifo = 0,
-            .clk = 24000000,
-            .div = 16,
-            .name = "/dev/ser",
-            .reserved1 = NULL,
-            .reserved2 = 0,
-            .verbose = 0,
-            .highwater = 0,
-            .logging_path = "",
-            .lflags = 0,
-            .unit = 1
-        },
-        .drt = 0,
-        .prio = 0,
-        .loopback = 0,
-        .fifo_reg = 0,
-        .dma_enable = 0,
-        .dma_request_rx = 0,
-        .dma_request_tx = 0,
-        .dma_xfer_size = 0,
-        .chan_rx = 0,
-        .chan_tx = 0,
-        .is_debug_console = 0,
-    };
+	/*
+	 * Initialize the devinit to raw mode
+	 */
+	ttc(TTC_INIT_RAW, &devinit, 0);
 
-    /*
-     * Initialize the devinit to raw mode
-     */
-    ttc(TTC_INIT_RAW, &devinit, 0);
+	unit = 1;
 
-    while (optind < argc) {
-        /*
-         * Process dash options.
-         */
-        while ((opt = getopt(argc, argv, IO_CHAR_SERIAL_OPTIONS "t:T:D")) != -1) {
-            switch (opt) {
-                case 't':
-                    errno = EOK;
-                    val = strtoul(optarg, NULL, 0);
-                    if (errno != EOK) {
-                        (void)fprintf(stderr, "Invalid receive FIFO trigger level, errno: %d\n", errno);
-                        break;
-                    }
-                    rx_fifo = (unsigned)val;
-                    if (rx_fifo > 4)
-                        rx_fifo = 2;
-                    break;
+	while (optind < argc) {
+		/*
+		 * Process dash options.
+		 */
+		while ((opt = getopt(argc, argv, IO_CHAR_SERIAL_OPTIONS "c:t:T:u:")) != -1) {	
+			switch (ttc(TTC_SET_OPTION, &devinit, opt)) {
+				case 'c':
+					devinit.tty.clk = strtoul(optarg, &optarg, 0);
+					break;
 
-                case 'T':
-                    errno = EOK;
-                    val = strtoul(optarg, NULL, 0);
-                    if (errno != EOK) {
-                        (void)fprintf(stderr, "Invalid number of characters to send to transmit FIFO, errno: %d\n", errno);
-                        break;
-                    }
-                    tx_fifo = (unsigned)val;
-                    if (tx_fifo > 4)
-                        tx_fifo = 2;
-                    break;
+				case 't':
+					rx_fifo = strtoul(optarg, NULL, 0);
+					if (rx_fifo > 4)
+						rx_fifo = 2;
+					break;
 
-                case 'D':
-                    devinit.is_debug_console = 1;
-                    break;
+				case 'T':
+					tx_fifo = strtoul(optarg, NULL, 0);
+					if (tx_fifo > 4)
+						tx_fifo = 2;
 
-                default:
-                    /* the other options has parsed by ttc function */
-                    (void)ttc(TTC_SET_OPTION, &devinit, opt);
-                    break;
-            }
-        }
+					break;
 
-        devinit.tty.fifo = (rx_fifo << 3) | tx_fifo;
+				case 'u':
+					unit = strtoul(optarg, NULL, 0);
+					break;
+			}
+		}
 
-        /*
-         * Process ports and interrupts.
-         */
-        while (optind < argc  &&  *(optarg = argv[optind]) != '-') {
-            errno = EOK;
-            val = strtoul(optarg, &optarg, 16);
-            if (errno != EOK) {
-                (void)fprintf(stderr, "Invalid serial port base address, errno: %d\n", errno);
-                port_error = 1L;
-                break;
-            }
-            devinit.tty.port = val;
-            if (*optarg == '^') {
-                errno = EOK;
-                val = strtoul(optarg + 1, &optarg, 0);
-                if (errno != EOK) {
-                    (void)fprintf(stderr, "Invalid serial port shift, errno: %d\n", errno);
-                    port_error = 1L;
-                    break;
-                }
-                devinit.tty.port_shift = (unsigned)val;
-            }
-            if (*optarg == ',')  {
-                errno = EOK;
-                val = strtoul(optarg + 1, NULL, 0);
-                if (errno != EOK) {
-                    (void)fprintf(stderr, "Invalid serial port interrupt, errno: %d\n", errno);
-                    port_error = 1L;
-                    break;
-                }
-                devinit.tty.intr = (unsigned)val;
-            }
-            create_device(&devinit);
-            devinit.tty.unit++;
-            ++numports;
-            ++optind;
-        }
-        if (port_error != 0L) {
-            break;
-        }
-    }
+		devinit.tty.fifo = (rx_fifo << 3) | tx_fifo;
 
-    if (numports == 0) {
-        link = NULL;
-        devinit.tty.fifo = (rx_fifo << 3) | tx_fifo;
-        while (1) {
-            link = query_default_device(&devinit, link);
-            if (link == NULL)
-                break;
-            create_device(&devinit);
-            devinit.tty.unit++;
-            ++numports;
-        }
-    }
+		/*
+		 * Process ports and interrupts.
+		 */
+		while (optind < argc  &&  *(optarg = argv[optind]) != '-') {
+			devinit.tty.port = strtoul(optarg, &optarg, 16);
+			if (*optarg == '^') {
+				devinit.tty.port_shift = strtoul(optarg + 1, &optarg, 0);
+			}
+			if (*optarg == ',')  {
+				devinit.tty.intr = strtoul(optarg + 1, NULL, 0);
+			}
+			create_device(&devinit, unit++);
+			++numports;
+			++optind;
+		}
+	}
 
-    return numports;
+	if (numports == 0) {
+		link = NULL;
+		devinit.tty.fifo = (rx_fifo << 3) | tx_fifo;
+		while (1) {
+			link = query_default_device(&devinit, link);
+			if (link == NULL)
+				break;
+			create_device(&devinit, unit++);
+			++numports;
+		}
+	}
+
+	return numports;
 }
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/devc/serpl011/options.c $ $Rev: 932262 $")
+#endif

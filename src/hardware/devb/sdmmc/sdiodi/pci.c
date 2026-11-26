@@ -1,25 +1,4 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC:
  * Copyright 2007, 2008, QNX Software Systems.
  *
@@ -56,12 +35,12 @@
 #include <pci/cap_msi.h>
 #include <pci/cap_msix.h>
 
-int sdio_pci_init( void )
+int sdio_pci_init( )
 {
 	return( EOK );
 }
 
-int sdio_pci_dinit( void )
+int sdio_pci_dinit( )
 {
 	return( EOK );
 }
@@ -84,7 +63,7 @@ static int sdio_pci_enable( sdio_hc_t *hc, int cap, int max_driver_supported_int
 	sdio_hc_cfg_t	*cfg;
 	sdio_pci_dev_t	*pci;
 	int				idx;
-	int				max_device_supported_interrupts;
+	uint_t			max_device_supported_interrupts;
 	pci_irq_t		irq[1];
 	int_t			nirq = NELEMENTS( irq );
 	pci_cmd_t		cmd;
@@ -99,14 +78,12 @@ static int sdio_pci_enable( sdio_hc_t *hc, int cap, int max_driver_supported_int
 
 			// set the disposition of all other device interrupt sources to unused
 		for( idx = max_driver_supported_interrupts; idx < max_device_supported_interrupts; idx++ ) {
-			pci_err = cap_msix_set_irq_entry( pci->dev_hdl, pci->msix, (uint_t)idx, -1 );
-			if( pci_err != PCI_ERR_OK ) {
+			if( ( pci_err = cap_msix_set_irq_entry( pci->dev_hdl, pci->msix, idx, -1 ) ) != PCI_ERR_OK ) {
 				sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 2, "%s: Disable of MSI-X interrupt entry %u failed: %s", __FUNCTION__, idx, pci_strerror( pci_err ) );
 			}
 		}
 			// now enable the capability
-		pci_err = pci_device_cfg_cap_enable( pci->dev_hdl, pci_reqType_e_MANDATORY, pci->msix );
-		if( pci_err != PCI_ERR_OK ) {
+		if( ( pci_err = pci_device_cfg_cap_enable( pci->dev_hdl, pci_reqType_e_MANDATORY, pci->msix ) ) != PCI_ERR_OK ) {
 			free( pci->msix );
 			pci->msix = NULL;
 			sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 2, "%s: Unable to enable MSI-X capabilities, %s", __FUNCTION__, pci_strerror( pci_err ) );
@@ -116,8 +93,7 @@ static int sdio_pci_enable( sdio_hc_t *hc, int cap, int max_driver_supported_int
 			sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, hc->cfg.verbosity, 2, "%s: MSI-X capabilities enabled", __FUNCTION__ );
 				// unmask the interrupts we are interested in
 			for( idx = 0; idx < max_driver_supported_interrupts; idx++ ) {
-				pci_err = cap_msix_unmask_irq_entry( pci->dev_hdl, pci->msix, (uint_t)idx );
-				if( pci_err != PCI_ERR_OK ) {
+				if( ( pci_err = cap_msix_unmask_irq_entry( pci->dev_hdl, pci->msix, idx ) ) != PCI_ERR_OK ) {
 					sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 2, "%s: Unmask of MSI-X interrupt entry %d failed: %s", __FUNCTION__, idx, pci_strerror( pci_err ) );
 				}
 				else {
@@ -132,8 +108,7 @@ static int sdio_pci_enable( sdio_hc_t *hc, int cap, int max_driver_supported_int
 
 			// before enabling the MSI capability, configure the desired number of interrupts
 		if( max_device_supported_interrupts > max_driver_supported_interrupts ) {
-			pci_err = cap_msi_set_nirq( pci->dev_hdl, pci->msi, (uint_t)max_driver_supported_interrupts );
-			if( pci_err != PCI_ERR_OK ) {
+			if( ( pci_err = cap_msi_set_nirq( pci->dev_hdl, pci->msi, max_driver_supported_interrupts ) ) != PCI_ERR_OK ) {
 				free( pci->msi );
 				pci->msi = NULL;
 				sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 2, "%s: cap_msi_set_nirq failed, %s", __FUNCTION__, pci_strerror( pci_err ) );
@@ -141,8 +116,7 @@ static int sdio_pci_enable( sdio_hc_t *hc, int cap, int max_driver_supported_int
 		}
 
 		if( pci_err == PCI_ERR_OK ) {
-			pci_err = pci_device_cfg_cap_enable( pci->dev_hdl, pci_reqType_e_MANDATORY, pci->msi );
-			if( pci_err != PCI_ERR_OK ) {
+			if( ( pci_err = pci_device_cfg_cap_enable( pci->dev_hdl, pci_reqType_e_MANDATORY, pci->msi ) ) != PCI_ERR_OK ) {
 				free( pci->msi );
 				pci->msi = NULL;
 				sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, hc->cfg.verbosity, 5, "%s: Unable to enable MSI capabilities, %s", __FUNCTION__, pci_strerror( pci_err ) );
@@ -150,31 +124,23 @@ static int sdio_pci_enable( sdio_hc_t *hc, int cap, int max_driver_supported_int
 			else {
 				sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, hc->cfg.verbosity, 5, "%s: MSI capabilities enabled", __FUNCTION__ );
 				for( idx = 0; idx < max_driver_supported_interrupts; idx++ ) {
-					pci_err = cap_msi_unmask_irq_entry( pci->dev_hdl, pci->msi, (uint_t)idx );
-					if( pci_err == PCI_ERR_OK ) {
+					if( ( pci_err = cap_msi_unmask_irq_entry( pci->dev_hdl, pci->msi, idx ) ) == PCI_ERR_OK ) {
 						sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, hc->cfg.verbosity, 5, "%s: PVM supported. MSI interrupt entry %u unmasked", __FUNCTION__, idx );
 					}
 					else if( pci_err != PCI_ERR_ENOTSUP ) {
 						sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, hc->cfg.verbosity, 5, "%s: Attempt to unmask MSI interrupt entry %u failed, %s", __FUNCTION__, idx, pci_strerror( pci_err ) );
-					}
-					else {
-						// nothing
 					}
 				}
 			}
 			pci->pflags |=  SDIO_PFLG_MSI;
 		}
 	}
-	else if( cap == SDIO_PCI_INTR_PIN ) {
+ 	else if( cap == SDIO_PCI_INTR_PIN ) {
 
-	}
-	else {
-		// nothing
 	}
 
 	if( cfg->irqs == 0 ) {
-		pci_err = pci_device_read_irq( pci->dev_hdl, &nirq, irq );
-		if( pci_err != PCI_ERR_OK ) {
+		if( ( pci_err = pci_device_read_irq( pci->dev_hdl, &nirq, irq ) ) != PCI_ERR_OK ) {
 			sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 2, "%s: pci_device_read_irq failed: %s", __FUNCTION__, pci_strerror( pci_err ) );
 			return( ENXIO );
 		}
@@ -191,15 +157,13 @@ static int sdio_pci_enable( sdio_hc_t *hc, int cap, int max_driver_supported_int
 	sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, hc->cfg.verbosity, 1, "%s: B%u:D%u:F%u, Check bus mastering is enabled", __FUNCTION__,
 			PCI_BUS( hc->pci.bdf ), PCI_DEV( hc->pci.bdf ), PCI_FUNC( hc->pci.bdf ) );
 
-	pci_err = pci_device_read_cmd( hc->pci.bdf, &cmd );
-	if( pci_err != PCI_ERR_OK ) {
+	if( ( pci_err = pci_device_read_cmd( hc->pci.bdf, &cmd ) ) != PCI_ERR_OK ) {
 		sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 2,
 				"%s: pci_device_read_cmd() failed: %s", __FUNCTION__, pci_strerror( pci_err ) );
 		return( ENXIO );
 	}
 	else if( ( cmd & ( 1u << 2 ) ) == 0 ) {
-		pci_err = pci_device_write_cmd( hc->pci.dev_hdl, cmd | ( 1u << 2 ), &cmd );
-		if( pci_err != PCI_ERR_OK ) {
+		if( ( pci_err = pci_device_write_cmd( hc->pci.dev_hdl, cmd | ( 1u << 2 ), &cmd ) ) != PCI_ERR_OK ) {
 			sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 2,
 					"%s: pci_device_write_cmd() failed: %s", __FUNCTION__, pci_strerror( pci_err ) );
 			return( ENXIO );
@@ -227,16 +191,14 @@ static int sdio_pci_capabilities( sdio_hc_t *hc )
 
 	pci = &hc->pci;
 
-	idx = pci_device_find_capid( pci->bdf, CAPID_PCIe );
-	if( idx >= 0 ) {
-		pci_err = pci_device_read_cap( pci->bdf, &pci->pcie, (uint_t)idx );
-		if( pci_err != PCI_ERR_OK ) {
+	if( ( idx = pci_device_find_capid( pci->bdf, CAPID_PCIe ) ) >= 0 ) {
+		if( ( pci_err = pci_device_read_cap( pci->bdf, &pci->pcie, idx ) ) != PCI_ERR_OK ) {
 			pci->pcie = NULL;
 			sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, hc->cfg.verbosity, 5, "%s:  Unable to read PCIe capabilities, %s", __FUNCTION__, pci_strerror( pci_err ) );
 		}
 		else {
 			pci_err = pci_device_cfg_cap_enable( pci->dev_hdl, pci_reqType_e_MANDATORY, pci->pcie );
-			if( ( pci_err != PCI_ERR_OK ) && ( pci_err != PCI_ERR_EALREADY ) ) {
+			if( pci_err != PCI_ERR_OK && pci_err != PCI_ERR_EALREADY ) {
 				sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, hc->cfg.verbosity, 5, "%s: Unable to enable PCIe capabilities, %s", __FUNCTION__, pci_strerror( pci_err ) );
 			}
 		}
@@ -246,10 +208,8 @@ static int sdio_pci_capabilities( sdio_hc_t *hc )
 	}
 
 		// MSI-X capability
-	idx = pci_device_find_capid( pci->bdf, CAPID_MSIX );
-	if( idx >= 0 ) {
-		pci_err = pci_device_read_cap( pci->bdf, &pci->msix, (uint_t)idx );
-		if( pci_err != PCI_ERR_OK ) {
+	if( ( idx = pci_device_find_capid( pci->bdf, CAPID_MSIX ) ) >= 0 ) {
+		if( ( pci_err = pci_device_read_cap( pci->bdf, &pci->msix, idx ) ) != PCI_ERR_OK ) {
 			pci->msix = NULL;
 			sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 2, "%s: Unable to read MSI-X capabilities, %s", __FUNCTION__, pci_strerror( pci_err ) );
 		}
@@ -262,10 +222,8 @@ static int sdio_pci_capabilities( sdio_hc_t *hc )
 	}
 
 		// MSI capability
-	idx = pci_device_find_capid( pci->bdf, CAPID_MSI );
-	if( idx >= 0 ) {
-		pci_err = pci_device_read_cap( pci->bdf, &pci->msi, (uint_t)idx );
-		if( pci_err != PCI_ERR_OK ) {
+	if( ( idx = pci_device_find_capid( pci->bdf, CAPID_MSI ) ) >= 0 ) {
+		if( ( pci_err = pci_device_read_cap( pci->bdf, &pci->msi, idx ) ) != PCI_ERR_OK ) {
 			pci->msi = NULL;
 			sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 2, "%s: Unable to read MSI capabilities, %s", __FUNCTION__, pci_strerror( pci_err ) );
 		}
@@ -312,16 +270,14 @@ static int sdio_pci_config( sdio_hc_t *hc, sdio_product_t *prod )
 
 	nirq = 1;									// remove if we find a device that supports more than 1 irq
 
-	status = sdio_pci_enable( hc, cap, nirq );
-	if( status != EOK ) {
+	if( ( status = sdio_pci_enable( hc, cap, nirq ) ) ) {
 		sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 2, "%s: sdio_pci_enable() failed: %s",
 				__FUNCTION__, strerror( status ) );
 
 		return( status );
 	}
 
-	pci_err = pci_device_read_ba( hc->pci.dev_hdl, &nba, ba, pci_reqType_e_UNSPECIFIED );
-	if( pci_err != PCI_ERR_OK ) {
+	if( ( pci_err = pci_device_read_ba( hc->pci.dev_hdl, &nba, ba, pci_reqType_e_UNSPECIFIED ) )  != PCI_ERR_OK ) {
 		sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 2, "%s: pci_device_read_ba() failed: %s",
 				__FUNCTION__, pci_strerror( pci_err ) );
 		return( ENXIO );
@@ -368,8 +324,7 @@ int sdio_pci_device( sdio_hc_t *hc )
 
 	cfg		= &hc->cfg;
 
-	prod = sdio_hc_lookup( cfg->vid, cfg->did, cfg->class, "" );
-	if( prod == NULL ) {
+	if( ( prod = sdio_hc_lookup( cfg->vid, cfg->did, cfg->class, "" ) ) == NULL ) {
 		return( ENODEV );
 	}
 
@@ -392,9 +347,9 @@ int sdio_pci_device( sdio_hc_t *hc )
 	}
 }
 
-#define PCI_CCODE_PERIPHERAL_SDHC_DMA		(PCI_CCODE( PCI_CCODE_PERIPHERAL, 0x05, 0x01 ))
+#define PCI_CCODE_PERIPHERAL_SDHC_DMA		PCI_CCODE( PCI_CCODE_PERIPHERAL, 0x05, 0x01 )
 
-int sdio_pci_scan( void )
+int sdio_pci_scan( )
 {
 	sdio_hc_t					*hc;
 	sdio_hc_cfg_t				*cfg;
@@ -414,36 +369,28 @@ int sdio_pci_scan( void )
 
 	for( i = 0; i < sizeof( sdhc_ccode ) / sizeof( pci_ccode_t ); i++ ) {
 		while( ( bdf = pci_device_find( idx, PCI_VID_ANY, PCI_DID_ANY, sdhc_ccode[i] ) ) != PCI_BDF_NONE ) {
-			r = pci_device_read_vid( bdf, &vid );
-			if( r != PCI_ERR_OK ) {
+			if( ( r = pci_device_read_vid( bdf, &vid ) ) != PCI_ERR_OK ) {
 				continue;
 			}
 
-			r = pci_device_read_did( bdf, &did );
-			if( r != PCI_ERR_OK ) {
+			if( ( r = pci_device_read_did( bdf, &did ) ) != PCI_ERR_OK ) {
 				continue;
 			}
 
-			r = pci_device_read_ccode( bdf, &ccode );
-			if( r != PCI_ERR_OK ) {
+			if( ( r = pci_device_read_ccode( bdf, &ccode ) ) != PCI_ERR_OK ) {
 				continue;
 			}
 
-			prod = sdio_hc_lookup( vid, did, ccode, "" );
-			if( prod != NULL ) {
-				if( hc == NULL ) {
-					hc = sdio_hc_alloc( );
-					if( hc == NULL ) {
-						return( ENOMEM );
-					}
+			if( ( prod = sdio_hc_lookup( vid, did, ccode, "" ) ) != NULL ) {
+				if( hc == NULL && ( hc = sdio_hc_alloc( ) ) == NULL ) {
+					return( ENOMEM );
 				}
 				cfg				= &hc->cfg;
 				cfg->vid		= vid;
 				cfg->did		= did;
 				cfg->class		= ccode;
 
-				status = sdio_pci_device( hc );
-				if( status != EOK ) {
+				if( ( status = sdio_pci_device( hc ) ) != EOK ) {
 					return( status );
 				}
 				hc = NULL;
@@ -455,4 +402,9 @@ int sdio_pci_scan( void )
 	return( EOK );
 }
 
+#endif
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/devb/sdmmc/sdiodi/pci.c $ $Rev: 896546 $")
 #endif

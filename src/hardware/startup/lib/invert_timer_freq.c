@@ -1,25 +1,4 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC:
  * Copyright 2008, QNX Software Systems. 
  * 
@@ -44,7 +23,7 @@
 
 
 
-#include <startup.h>
+#include "startup.h"
 
 //
 // Convert the timer frequency (given in Hz) into a timer period and
@@ -55,7 +34,7 @@
 void
 invert_timer_freq(struct qtime_entry *qtime, unsigned freq) {
 	int			scale;
-	unsigned	period;
+	unsigned	rate;
 	unsigned	rem;
 	unsigned	div;
 	unsigned	quot;
@@ -65,7 +44,7 @@ invert_timer_freq(struct qtime_entry *qtime, unsigned freq) {
 	}
 	quot = 1;
 	scale = 0;
-	period = 0;
+	rate = 0;
 
 	/* to ensure (quot = rem * 10) doesn't overflow ... */
 	if (freq > (UINT_MAX/10)) {
@@ -75,13 +54,18 @@ invert_timer_freq(struct qtime_entry *qtime, unsigned freq) {
 
 	for(;;) {
 		div = quot / freq;
-		period = period * 10 + div;
-		if(period >= ((UINT_MAX/10) - 10)) break;
+		rate = rate * 10 + div;
+		if(rate >= ((UINT_MAX/10) - 10)) break;
 		rem = quot % freq;
 		if(rem == 0) break;
 		--scale;
 		quot = rem * 10;
 	} 
-	qtime->timer_period = period;
+	qtime->timer_rate = rate;
 	qtime->timer_scale = scale;
 }
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/startup/lib/invert_timer_freq.c $ $Rev: 787369 $")
+#endif

@@ -1,0 +1,14 @@
+[pi5]
+arm_64bit=1
+enable_uart=1
+force_turbo=1
+kernel=ifs-rpi5.bin
+
+# REQUIRED for the SDP 7.1 port: do not reset the PCIe link to the RP1 I/O
+# controller before starting QNX. There is no BCM2712 PCI driver for SDP 7.1,
+# so the BSP uses RP1 (USB, UARTs, GPIO, fan) as configured by the firmware.
+pciex4_reset=0
+
+# Uncomment when powering the board from a supply that cannot negotiate 5A,
+# otherwise the firmware limits the USB ports to 600 mA in total.
+#usb_max_current_enable=1

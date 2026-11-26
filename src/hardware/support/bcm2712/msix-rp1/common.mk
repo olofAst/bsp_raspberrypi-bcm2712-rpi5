@@ -8,8 +8,6 @@ NAME = msix-rp1
 EXTRA_SILENT_VARIANTS+=$(SECTION)
 USEFILE=$(PROJECT_ROOT)/$(NAME).use
 
-LIBS += pci
-
 define PINFO
 PINFO DESCRIPTION=Raspberry pi5 RP1 MSIX configuration
 endef

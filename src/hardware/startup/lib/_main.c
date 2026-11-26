@@ -1,25 +1,4 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC:
  * Copyright 2008, QNX Software Systems.
  *
@@ -40,7 +19,7 @@
  * $
  */
 
-#include <startup.h>
+#include "startup.h"
 #include <errno.h>
 
 #ifndef CPU_PADDR_BITS
@@ -166,6 +145,13 @@ _main(void) {
 	main(_argc, _argv, envv);
 
 	//
+	// Tell the mini-drivers that the next time they're called, they're
+	// going to be in the kernel. Also flip the handler & data pointers
+	// to the proper values for that environment.
+	//
+	mdriver_hook();
+
+	//
 	// Copy the local version of the system page we've built to the real
 	// system page location we allocated in init_system_private().
 	//
@@ -184,6 +170,8 @@ hook_dummy(void) {
 }
 
 void						(*smp_hook_rtn)(void) = hook_dummy;
+void						(*mdriver_check)(void) = hook_dummy;
+void						(*mdriver_hook)(void) = hook_dummy;
 
 
 // Replacement for some C library stuff to minimize startup size
@@ -222,4 +210,10 @@ const char * const blown_startup_stack(const size_t req_sz, const uintptr_t sp)
 						stack_addr, (uintptr_t)&stack_addr_hi, sp, (unsigned)aligned_req_sz, (unsigned)(sp - stack_addr));
 	return msg;
 }
+#endif
+
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/startup/lib/_main.c $ $Rev: 922251 $")
 #endif

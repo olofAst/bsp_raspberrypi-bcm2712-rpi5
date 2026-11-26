@@ -21,7 +21,13 @@ EXTRA_SRCVPATH_x86_64=$(PROJECT_ROOT)/common_x86
 EXTRA_SRCVPATH_arm=$(PROJECT_ROOT)/common_arm
 EXTRA_SRCVPATH_aarch64=$(PROJECT_ROOT)/common_arm
 
+MDRIVER_SRCPATH = $(MDRIVER_ROOT)/$(CPU) $(MDRIVER_ROOT)
+EXTRA_SRCVPATH += $(if $(wildcard $(MDRIVER_ROOT)/mdriver.c),$(MDRIVER_SRCPATH))
+
 -include ../../roots.mk
+ifndef MDRIVER_ROOT
+MDRIVER_ROOT=$(PRODUCT_ROOT)/mdriver
+endif
 
 VEND_qss=extra
 VENDOR=$(VEND_$(firstword $(BUILDENV) qss))
@@ -39,18 +45,17 @@ include $(MKFILES_ROOT)/qtargets.mk
 
 asmoff.def: $(PROJECT_ROOT)/asmoff.h $(CPU_ROOT)/asmoff.c
 
-POST_INSTALL+=$(CP_HOST) \
-	$(PROJECT_ROOT)/$(CPU)/$(VARIANT1)/asmoff.def \
-	$(INSTALL_ROOT_$(OS))/usr/include/$(CPU)/asmoff.def;
-
 CCVFLAG_64 = -D_PADDR_BITS=64
 
-CCFLAGS += -Wno-error=missing-prototypes
 CCFLAGS_gcc_ = -O2 -fomit-frame-pointer -fno-PIE
 CCFLAGS_clang_ = -O2 -fomit-frame-pointer -fno-PIE
 CCFLAGS_gcc_qcc = -O2 -Wc,-fomit-frame-pointer -fno-PIE
 CCFLAGS_$(BUILDENV) = -DBUILDENV_$(BUILDENV)
 CCFLAGS += $(CCFLAGS_$(COMPILER_TYPE)_$(COMPILER_DRIVER)) $(CCFLAGS_$(BUILDENV))
+#
+# Allow us to generate the deprecated sections
+#
+CCFLAGS += -DENABLE_DEPRECATED_SYSPAGE_SECTIONS
 
 #
 # This particular little kludge is to stop GCC from using F.P. instructions
@@ -65,7 +70,6 @@ CC_nto_ppc_gcc_qcc += -Wc,-msoft-float
 endif
 
 CCFLAGS_aarch64 += -mgeneral-regs-only -mstrict-align -fno-store-merging
-CCFLAGS_x86_64 += -mgeneral-regs-only
 
 CCFLAGS_arm += -marm -D_PADDR_BITS=64
 CCFLAGS += $(CCFLAGS_$(CPU))
@@ -79,16 +83,3 @@ print_sysp.o: print_sysp.c $(CPU_ROOT)/cpu_print_sysp.ci
 # Temporary until linker has been changed.
 CCOPTS:=$(filter-out -g,$(CCOPTS))
 
-#
-# A custom cinstall target helps to put print_sysc.c into usr/include/private/startup/lib
-# in order to sync with utils/p/pidin/print_sysp.c
-#
-cinstall:
-	mkdir -p $(INSTALL_ROOT_nto)/usr/include/private/startup/lib
-	$(CP_HOST) -f $(PROJECT_ROOT)/print_sysp.c $(INSTALL_ROOT_nto)/usr/include/private/startup/lib/print_sysp.c
-
-#
-# Mainline-SDP production builds only run $make hinstall; make install only
-# Here is to force the cinstall like this and it will do it during the initial hinstall stage.
-#
-hinstall:cinstall

@@ -1,25 +1,4 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC:
  * Copyright 2018, QNX Software Systems.
  *
@@ -40,13 +19,13 @@
  * $
  */
 
-#include <startup.h>
+#include "startup.h"
 
 static void
 a75_setup(void)
 {
 	/*
-	 * Handle A75 Errata fixes
+	 * Handle A75 Errata workarounds
 	 */
 #ifdef AUTO_ENABLE_MELTDOWN
 	if(meltdown_active < 0) {
@@ -60,3 +39,8 @@ struct aarch64_cpuid	cpuid_a75 = {
 	.name = "Cortex-A75",
 	.setup = a75_setup,
 };
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/startup/lib/aarch64/cpuid_a75.c $ $Rev: 858279 $")
+#endif

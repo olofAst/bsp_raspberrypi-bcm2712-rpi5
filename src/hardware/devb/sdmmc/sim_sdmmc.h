@@ -1,25 +1,4 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC:
  * Copyright 2007, 2008, QNX Software Systems.
  *
@@ -83,11 +62,6 @@
 #include <sd.h>
 #include <mmc.h>
 
-#ifdef SDMMC_POWMAN_SUP
-#include <sys/slog2.h>
-#include <powerman/pm_client.h>
-#endif
-
 //#define SDMMC_WRITE_VERIFY
 #define SDMMC_TRIM_SUP
 //#define SDMMC_SIM_RETRY
@@ -108,34 +82,30 @@
 
 #define SDMMC_PM_TIMER					0x40		// Timer event
 
-#define SDMMC_POWMAN_UPDATE				0x41
-#define SDMMC_POWMAN_RECONNECT			0x42
-
 #define SDMMC_MAX_BUS					10
 
 #define SDMMC_MAX_HBA					8
 #define SDMMC_MAX_TARGET				8
 #define SDMMC_MAX_SG					128
 
-#define SDMMC_START_CCB_MAX				25			// max loops in sdmmc_start_ccb fcn
-
 #define SDMMC_TRIM_MAX_LBA				0xffffffff
 #define SDMMC_TIMEOUT_MS_TO_NS( _to )	( (uint64_t)( _to ) * 1000LL * 1000LL )
 #define SDMMC_TIMEOUT_S_TO_NS( _to )	( (uint64_t)( _to ) * 1000LL * 1000LL * 1000LL )
 
-#define SDMMC_ADDR_ALIGNED( _addr, _align )		( ( ( _addr ) & ( ( typeof( _addr ) )( _align ) - 1 ) ) == 0 )
+#define SDMMC_ARG_VAL( _o, _v ) if( (_v) == NULL || *(_v) == '\0' ) { cam_slogf( _SLOGC_SIM_MMC, _SLOG_ERROR, 1, 1, "%s:  Missing argument for '%s'", __FUNCTION__, _o ); break; }
+#define SDMMC_ARG_NOVAL( _o, _v ) if( (_v) != NULL ) { cam_slogf( _SLOGC_SIM_MMC, _SLOG_ERROR, 1, 1, "%s:  Unexpected argument for '%s'", __FUNCTION__, _o ); break; }
+#define SDMMC_ARG_NUMBER( _o, _n, _f ) if( ( *(_n) = (_f)) == -1 ) { cam_slogf( _SLOGC_SIM_MMC, _SLOG_ERROR, 1, 1, "%s:  Invalid numeric argument for '%s'", __FUNCTION__, _o ); break; }
+#define SDMMC_ARG_MISSING( _o, _a ) if( !(_a) ) { cam_slogf( _SLOGC_SIM_MMC, _SLOG_ERROR, 1, 1, "%s:  Missing argument component for '%s'", __FUNCTION__, _o ); break; }
 
 typedef struct _sdmmc_ctrl {
 	TAILQ_HEAD(,_sim_hba)	hlist;			// linked list of hba's
 
 #define SDMMC_CFLAG_SCAN		0x01		// auto detect interfaces
 #define SDMMC_CFLAG_ENUMERATING	0x02
-#define SDMMC_CFLG_ARGS_ERR		0x04		// flag to indicate arg processing error
 	uint32_t				cflags;
-	int						verbosity;
+	uint32_t				verbosity;
 	uint32_t				nhba;			// number of hba's
-	path_id_t				pathid_max;		// max path id
-	int						priority;
+	uint32_t				pathid_max;		// max path id
 
 	int						argc;
 	char					**argv;
@@ -181,15 +151,13 @@ typedef struct _sim_sdmmc_ext {
 #define SDMMC_EFLAG_PWROFF_NOTIFY		(1 << 9)
 #define SDMMC_EFLAG_BKOPS_AUTO			(1 << 10)	// Device BKOPS
 #define SDMMC_EFLAG_VCACHE_DIRTY		(1 << 11)
-#define SDMMC_EFLAG_RELWR				(1 << 12)	// Enable Reliable Writes
-#define SDMMC_EFLAG_POWMAN				(1 << 13)	// Attach to powerman for suspend/resume
 #define SDMMC_EFLAG_BS					(1 << 24)
 	_Uint32t				eflags;
+	_Uint8t					priority;
 	_Uint8t					pwroff_notify;
-	_Uint8t					rsvd[7];
+	_Uint8t					rsvd[2];
 
 	CCB_SCSIIO				*nexus;
-	int						start_ccb_max;			// max loops in sdmmc_start_ccb fcn
 
 	struct sdio_device		*device;
 	sdio_device_instance_t	instance;
@@ -202,15 +170,9 @@ typedef struct _sim_sdmmc_ext {
 	_Uint64t				pm_idle_time_ns;
 	_Uint64t				pm_sleep_time_ns;
 
-#ifdef SDMMC_POWMAN_SUP
-	struct powman			*powman_hdl;
-#endif
-	char					*powman_name;
-
 #define SDMMC_PM_IDLE							0
 #define SDMMC_PM_SLEEP							1
 #define SDMMC_PM_ACTIVE							2
-#define SDMMC_PM_SUSPEND						3
 	_Uint32t				pm_state;
 
 	_Uint32t				drvr_state;			// paused/running
@@ -245,27 +207,22 @@ extern int sdmmc_sim_args( char *options );
 extern int sdmmc_sim_detach( void );
 extern int sdmmc_sim_attach( CAM_ENTRY *centry );
 extern int sdmmc_sim_init( SIM_HBA *hba, int path );
-extern int sdmmc_sim_action( SIM_HBA *hba, CCB *ccbp );
-extern void *sdmmc_driver_thread( void *hdl );
-extern void sdmmc_powman_disconnect( SIM_HBA *hba );
-extern int sdmmc_suspend( SIM_HBA *hba );
-extern int sdmmc_resume( SIM_HBA *hba );
+extern int sdmmc_sim_action( SIM_HBA *hba, CCB *ccb_ptr );
+extern void *sdmmc_driver_thread( void *data );
 
 extern int sdmmc_bkops( SIM_HBA *hba, int tick );
-extern int sdmmc_bkops_cfg( SIM_HBA *hba, int op );
+extern int sdmmc_bkops_cfg( SIM_HBA *hba, int value );
 extern int sdmmc_pwroff_notify( SIM_HBA *hba, uint8_t cfg );
-extern int sdmmc_sense( CCB_SCSIIO *ccb, uint8_t sense, uint8_t asc, uint8_t ascq );
 extern int sdmmc_unit_ready( SIM_HBA *hba, CCB_SCSIIO *ccb );
 extern int sdmmc_wp_devctl( SIM_HBA *hba, CCB_DEVCTL *ccb );
 extern int sdmmc_erase_devctl( SIM_HBA *hba, CCB_DEVCTL *ccb );
 extern int sdmmc_card_register_devctl( SIM_HBA *hba, CCB_DEVCTL *ccb );
-extern int sdmmc_rw( SIM_HBA *hba, SDMMC_PARTITION *part, uint32_t flgs, uint64_t addr, uint32_t dlen, sdio_sge_t *sgl, uint32_t sgc, void *mhdl, uint32_t timeout );
+extern int sdmmc_rw( SIM_HBA *hba, SDMMC_PARTITION *part, int flgs, uint64_t addr, int dlen, sdio_sge_t *sgl, int sgc, void *mhdl, uint32_t timeout );
 extern int sdmmc_read_write( SIM_HBA *hba, CCB_SCSIIO *ccb, int flgs );
 extern int sdmmc_reset( SIM_HBA *hba );
 extern int sim_bs_partition_config( SIM_HBA *hba );
 extern int sim_bs_devctl( SIM_HBA *hba, CCB_DEVCTL *ccb );
 extern int sim_bs_pass_through( SIM_HBA *hba, CCB_SCSIIO *ccb );
-extern int sim_bs_dev_cfg( SIM_HBA *hba );
 
 // sim_assd.c
 extern int sdmmc_assd_init( SIM_HBA *hba );
@@ -274,8 +231,30 @@ extern int sdmmc_assd_status_devctl( SIM_HBA *hba, CCB_DEVCTL *ccb );
 extern int sdmmc_assd_control_devctl( SIM_HBA *hba, CCB_DEVCTL *ccb );
 extern int sdmmc_assd_properties_devctl( SIM_HBA *hba, CCB_DEVCTL *ccb );
 
-extern char			*__progname;
+#ifndef EXTERN
+#define EXTERN_ADDED
+#define EXTERN extern
+#define	VALUE(x)
+#else
+#define VALUE(x) = { x }
+#endif
 
-extern SDMMC_CTRL sdmmc_ctrl;
+EXTERN SDMMC_CTRL sdmmc_ctrl
+#ifndef EXTERN_ADDED
+= { { 0 },0 }
+#endif
+;
 
+#ifdef EXTERN_ADDED
+#undef EXTERN_ADDED
+#undef EXTERN
+#endif
+#undef VALUE
+
+#endif
+
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/devb/sdmmc/sim_sdmmc.h $ $Rev: 896546 $")
 #endif

@@ -1,24 +1,3 @@
-/*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
 #
 # Copyright 2014, QNX Software Systems.
 #
@@ -44,7 +23,7 @@
  * See callout.ah for description of special registers for interrupt callouts.
  */
 
-#include <aarch64/callout.ah>
+#include "callout.ah"
 #include "aarch64/gic_v2.h"
 
 /*
@@ -77,15 +56,12 @@ gicd_patch:
 
 /*
  * -----------------------------------------------------------------------
- * Identify PPI interrupt source
+ * Identify interrupt source
  *
  *	x20 - syspage pointer
- *
- * Controller-relative Interrupt ID returned in x19
- * Read from IAR returned in x24
  * -----------------------------------------------------------------------
  */
-CALLOUT_START(interrupt_id_gic_v2_ppi, 0, gicc_patch)
+CALLOUT_START(interrupt_id_gic_v2, 0, gicc_patch)
 	mov		x6, #1234				// vaddr for GICC (patched)
 	movk	x6, #1234, lsl #16		// ...
 	movk	x6, #1234, lsl #32		// ...
@@ -94,14 +70,15 @@ CALLOUT_START(interrupt_id_gic_v2_ppi, 0, gicc_patch)
 	/*
 	 * Get interrupt ID and handle special cases:
 	 * ID0    - used for IPIs
+	 * ID1022 - spurious interrupt
+	 * ID1023 - spurious interrupt
 	 */
 	ldr		w0, [x6, #ARM_GICC_IAR]
 	and		w19, w0, #ARM_GICC_IAR_IDMASK
-	cmp		w19, #31
-	mov		x1, #-1
-	mov		w24,w19 // save for id_gic_v2_spi
-	// Return intid if it's <= 31, -1 otherwise
-	csel	x19, x1, x19, hi
+    cmp     w19, #1021
+    mov     x1, #-1
+	// Return intid if it's <= 1021, -1 otherwise
+    csel    x19, x1, x19, hi
 	cbnz	x19, 2f
 
 	/*
@@ -113,43 +90,16 @@ CALLOUT_START(interrupt_id_gic_v2_ppi, 0, gicc_patch)
 	 * Done - interrupt id is in x19
 	 */
 2:
-CALLOUT_END(interrupt_id_gic_v2_ppi)
+CALLOUT_END(interrupt_id_gic_v2)
 
 
 /*
  * -----------------------------------------------------------------------
- * Identify SPI interrupt source
+ * Acknowledge specified interrupt
  *
- * X24 - read of IAR from interrupt_id_gic_v2_ppi
- *
- * Controller-relative Interrupt ID returned in x19
- * Read from IAR in x24 is untouched.
- * -----------------------------------------------------------------------
- */
-CALLOUT_START(interrupt_id_gic_v2_spi, 0, 0)
-    /*
-     * Get interrupt ID and handle special cases:
-     * ID1022 - spurious interrupt
-     * ID1023 - spurious interrupt
-     */
-    /* make return value relative to SPIs */
-    sub     x0, x24, #32
-    cmp     x24, #1021
-    mov     x1, #-1
-    /* Return INTID if <= 1021, -1 otherwise */
-    csel    x19, x1, x0, hi
-
-CALLOUT_END(interrupt_id_gic_v2_spi)
-
-
-/*
- * -----------------------------------------------------------------------
- * Acknowledge specified interrupt (PPI and SPIs)
- *
- *	x19 - contains interrupt id (relative to controller)
+ *	x19 - contains interrupt id
  *	x20 - contains syspage pointer (INTR_GENFLAG_LOAD_SYSPAGE was used)
  *	x22 - contains intr mask count (INTR_GENFLAG_LOAD_INTRMASK was used)
- *  X24 - read of IAR from interrupt_id_gic_v2_ppi
  * -----------------------------------------------------------------------
  */
 CALLOUT_START(interrupt_eoi_gic_v2, 0, gicc_patch)
@@ -161,25 +111,25 @@ CALLOUT_START(interrupt_eoi_gic_v2, 0, gicc_patch)
 	/*
 	 * Skip ID0 because we EOI in the id callout
 	 */
-	cbz		w24, 0f
+	cbz		w19, 0f
 
 	/*
 	 * Send EOI
 	 */
-	str		w24, [x6, #ARM_GICC_EOIR]
+	str		w19, [x6, #ARM_GICC_EOIR]
 0:
 CALLOUT_END(interrupt_eoi_gic_v2)
 
 
 /*
  * -----------------------------------------------------------------------
- * Mask specified PPI interrupt
+ * Mask specified interrupt
  *
  *	x0 - _syspage_ptr
  *	x1 - vector number (relative to controller)
  * -----------------------------------------------------------------------
  */
-CALLOUT_START(interrupt_mask_gic_v2_ppi, 0, gicd_patch)
+CALLOUT_START(interrupt_mask_gic_v2, 0, gicd_patch)
 	mov		x5, #1234				// vaddr for GICD (patched)
 	movk	x5, #1234, lsl #16		// ...
 	movk	x5, #1234, lsl #32		// ...
@@ -197,18 +147,18 @@ CALLOUT_START(interrupt_mask_gic_v2_ppi, 0, gicd_patch)
 
 	mov		x0, #0
 	ret
-CALLOUT_END(interrupt_mask_gic_v2_ppi)
+CALLOUT_END(interrupt_mask_gic_v2)
 
 
 /*
  * -----------------------------------------------------------------------
- * Unmask specified PPI interrupt
+ * Unmask specified interrupt
  *
  *	x0 - _syspage_ptr
  *	x1 - vector number (relative to controller)
  * -----------------------------------------------------------------------
  */
-CALLOUT_START(interrupt_unmask_gic_v2_ppi, 0, gicd_patch)
+CALLOUT_START(interrupt_unmask_gic_v2, 0, gicd_patch)
 	mov		x5, #1234				// vaddr for GICD (patched)
 	movk	x5, #1234, lsl #16		// ...
 	movk	x5, #1234, lsl #32		// ...
@@ -226,90 +176,36 @@ CALLOUT_START(interrupt_unmask_gic_v2_ppi, 0, gicd_patch)
 
 	mov		x0, #0
 	ret
-CALLOUT_END(interrupt_unmask_gic_v2_ppi)
+CALLOUT_END(interrupt_unmask_gic_v2)
 
 /*
  * -----------------------------------------------------------------------
- * Mask specified SPI interrupt
- *
- *	x0 - _syspage_ptr
- *	x1 - vector number (relative to controller)
- *
- * Returns 0.
- * -----------------------------------------------------------------------
- */
-CALLOUT_START(interrupt_mask_gic_v2_spi, 0, gicd_patch)
-	mov		x5, #1234				// vaddr for GICD (patched)
-	movk	x5, #1234, lsl #16		// ...
-	movk	x5, #1234, lsl #32		// ...
-	movk	x5, #1234, lsl #48		// ...
-
-	/*
-	 * Mask interrupt
-	 */
-	add		x5, x5, #ARM_GICD_ICENABLERn
-	add		w1, w1, #32						// vector passed is relative to SPI base,
-											// but write in ICENABLERn is relative to 0
-	and		w0, w1, #0x1f
-	mov		w2, #1
-	lsl		w2, w2, w0						// bit to set = 1 << (id % 32)
-	lsr		w0, w1, #5						// index = id / 32
-	str		w2, [x5, x0, lsl #2]			// ICENABLERn[index] = bit
-
-	mov		x0, #0
-	ret
-CALLOUT_END(interrupt_mask_gic_v2_spi)
-
-
-/*
- * -----------------------------------------------------------------------
- * Unmask specified SPI interrupt
- *
- *	x0 - _syspage_ptr
- *	x1 - vector number (relative to controller)
- *
- * Returns 0.
- * -----------------------------------------------------------------------
- */
-CALLOUT_START(interrupt_unmask_gic_v2_spi, 0, gicd_patch)
-	mov		x5, #1234				// vaddr for GICD (patched)
-	movk	x5, #1234, lsl #16		// ...
-	movk	x5, #1234, lsl #32		// ...
-	movk	x5, #1234, lsl #48		// ...
-
-	/*
-	 * Unmask interrupt
-	 */
-	add		x5, x5, #ARM_GICD_ISENABLERn
-	add		w1, w1, #32						// vector passed is relative to SPI base,
-											// but write in ISENABLERn is relative to 0
-	and		w0, w1, #0x1f
-	mov		w2, #1
-	lsl		w2, w2, w0						// bit to set = 1 << (id % 32)
-	lsr		w0, w1, #5						// index = id / 32
-	str		w2, [x5, x0, lsl #2]			// ISENABLERn[index] = bit
-
-	mov		x0, #0
-	ret
-CALLOUT_END(interrupt_unmask_gic_v2_spi)
-
-/*
- * -----------------------------------------------------------------------
- * Configure interrupt flags for a specified PPI interrupt vector
- *
- * Used to flag INTID0 as the IPI vector.
+ * Configure interrupt flags for a specified interrupt vector
  *
  *	x0 - syspage pointer
  *	x1 - intrinfo_entry pointer
  *	x2 - vector number (relative to controller)
  * -----------------------------------------------------------------------
  */
-CALLOUT_START(interrupt_config_gic_v2_ppi, 0, 0)
+CALLOUT_START(interrupt_config_gic_v2, 0, 0)
 	/*
 	 * Use ID0 for IPI
 	 */
 	cmp		x2, #0
 	mov		w0, #INTR_CONFIG_FLAG_IPI
 	csel	w0, w0, wzr, eq
+.ifdef INTR_CONFIG_FLAG_SYS // we can remove this after the new header are propagated
+	cmp		x2, #31
+	mov		w1, #INTR_CONFIG_FLAG_SYS
+	csel	w0, w1, w0, hi
+.endif
 	ret
-CALLOUT_END(interrupt_config_gic_v2_ppi)
+CALLOUT_END(interrupt_config_gic_v2)
+
+#ifdef __QNXNTO__
+#ifdef __USESRCVERSION
+.section .ident, "SM",%progbits,1;
+.asciz "$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/startup/lib/aarch64/callout_interrupt_gic_v2.S $ $Rev: 845710 $";
+.previous
+#endif
+#endif

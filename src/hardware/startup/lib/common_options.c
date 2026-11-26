@@ -1,41 +1,20 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC:
- * Copyright 2008, 2022 QNX Software Systems.
- *
- * Licensed under the Apache License, Version 2.0 (the "License"). You
- * may not reproduce, modify or distribute this software except in
- * compliance with the License. You may obtain a copy of the License
- * at: http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" basis,
+ * Copyright 2008, QNX Software Systems. 
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License"). You 
+ * may not reproduce, modify or distribute this software except in 
+ * compliance with the License. You may obtain a copy of the License 
+ * at: http://www.apache.org/licenses/LICENSE-2.0 
+ * 
+ * Unless required by applicable law or agreed to in writing, software 
+ * distributed under the License is distributed on an "AS IS" basis, 
  * WITHOUT WARRANTIES OF ANY KIND, either express or implied.
  *
- * This file may contain contributions from others, either as
- * contributors under the License or as licensors under other terms.
- * Please review this entire file for other proprietary rights or license
- * notices, as well as the QNX Development Suite License Guide at
+ * This file may contain contributions from others, either as 
+ * contributors under the License or as licensors under other terms.  
+ * Please review this entire file for other proprietary rights or license 
+ * notices, as well as the QNX Development Suite License Guide at 
  * http://licensing.qnx.com/license-guide/ for other information.
  * $
  */
@@ -44,7 +23,7 @@
 
 
 
-#include <startup.h>
+#include "startup.h"
 
 int				in_hvc;
 
@@ -83,28 +62,12 @@ handle_common_option(int opt) {
 	char					*cp;
 	unsigned long			hundred_loop_time, overhead;
 	struct reserved_ram		*next;
-	paddr_t		resmem_addr;
-	size_t		resmem_size;
 
 	if(!cpu_handle_common_option(opt)) {
 		switch(opt) {
 		case 'C':
 			secure_system = 1;
 			break;
-        case 'c':
-            // E.g.:
-            // -c big:0xf0,little:0x0f
-            for (;;) {
-                char * clusdata = strchr(optarg, ':');
-                if (clusdata == NULL) break;
-
-                *clusdata = 0;
-                uint64_t const cpumask = strtoul(clusdata+1, &clusdata, 0);
-                if (!cpu_cluster_add(optarg, cpumask)) break;
-                if (*clusdata != ',') break;
-                optarg = clusdata + 1;
-            }
-            break;
 		case 'D':
 			/* kprintf output channel */
 			debug_opt[0] = optarg;
@@ -153,15 +116,6 @@ handle_common_option(int opt) {
 				}
 			}
 			break;
-		case 'r':
-			// reserve user-specified memory from startup
-			resmem_addr = getsize(optarg, &cp);
-			if(*cp == ',') {
-				resmem_size = getsize(cp + 1, &cp);
-				avoid_ram(resmem_addr, resmem_size);
-			}
-			// else: ignore the option - a size is required
-			break;
 		case 'S':
 			//This gets handled later so that debug code isn't brought in all
 			//the time.
@@ -179,6 +133,7 @@ handle_common_option(int opt) {
 		case 'F':	
 		case 'A':
 		case 'M':
+		case 'r':
 		case 'j':
 		case 'Z':
 			// All handled later, see init_system_private...
@@ -226,9 +181,9 @@ handle_common_option(int opt) {
 				hwi_add_nanospin(hundred_loop_time, overhead);
 			}
 			break;
-		case 'H':
-			in_hvc = 1;
-			break;
+        case 'H':
+            in_hvc = 1;
+            break;
 		}
 	}
 }
@@ -303,3 +258,8 @@ select_debug(const struct debug_device *dev, unsigned size) {
 	select_one(dev, size, 0);
 	if(debug_opt[1] != NULL) select_one(dev, size, 1);
 }
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/startup/lib/common_options.c $ $Rev: 910727 $")
+#endif

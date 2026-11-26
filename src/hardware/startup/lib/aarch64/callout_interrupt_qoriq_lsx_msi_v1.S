@@ -1,25 +1,4 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC:
  * Copyright 2015, QNX Software Systems.
  *
@@ -41,7 +20,7 @@
  */
 
 
-#include <aarch64/callout.ah>
+#include "callout.ah"
 
 
 #define QorIQ_LSx_MSIR		0x4
@@ -261,3 +240,12 @@ CALLOUT_END(interrupt_unmask_qoriq_lsx_msi_v1)
 Lvaddr:	.word	0,0,0,0,0,0,0,0	/* 32 bytes of storage for a uintptr_t for 4 controllers */
 Lpaddr_first: .word		0, 0	/* 8 bytes of storage for paddr_t of first patch_data */
 Lmsir_size: .word	16			/* 16 bytes of storage for the MSIR for 4 controllers */
+
+
+#ifdef __QNXNTO__
+#ifdef __USESRCVERSION
+.section .ident, "SM",%progbits,1;
+.asciz "$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/startup/lib/aarch64/callout_interrupt_qoriq_lsx_msi_v1.S $ $Rev: 872055 $";
+.previous
+#endif
+#endif

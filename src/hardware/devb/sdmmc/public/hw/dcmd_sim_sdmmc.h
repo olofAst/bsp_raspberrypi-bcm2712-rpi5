@@ -1,27 +1,6 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC:
- * Copyright (c) 2007,2008,2024, BlackBerry Limited. All rights reserved.
+ * Copyright 2007, 2008, QNX Software Systems.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"). You
  * may not reproduce, modify or distribute this software except in
@@ -39,6 +18,7 @@
  * http://licensing.qnx.com/license-guide/ for other information.
  * $
  */
+
 /*
  *  dcmd_sim_sdmmc.h   Non-portable low-level devctl definitions
  *
@@ -99,7 +79,6 @@ typedef struct _sdmmc_card_register {
 #define SDMMC_REG_TYPE_CSD		0x01
 #define SDMMC_REG_TYPE_EXT_CSD	0x02
 #define SDMMC_REG_TYPE_SCR		0x03
-#define SDMMC_REG_TYPE_SDS		0x04
 #define SDMMC_CARD_TYPE_UNKNOWN	0x0
 #define SDMMC_CARD_TYPE_MMC		0x1
 #define SDMMC_CARD_TYPE_SD		0x2
@@ -107,11 +86,6 @@ typedef struct _sdmmc_card_register {
 	_Uint32t		address;
 	_Uint32t		length;
 	_Uint32t		rsvd[2];
-#define SDMMC_REG_SIZE_CID		16
-#define SDMMC_REG_SIZE_CSD		16
-#define SDMMC_REG_SIZE_EXT_CSD_READ	512
-#define SDMMC_REG_SIZE_EXT_CSD_WRITE	1
-#define SDMMC_REG_SIZE_SCR		8
 /*	_Uint8t			data[ length ];	variable length data */
 } SDMMC_CARD_REGISTER;
 
@@ -256,7 +230,6 @@ typedef struct _sdmmc_device_info {
 #define MID_MMC_TOSHIBA			0x11
 #define MID_MMC_MICRON			0x13
 #define MID_MMC_SAMSUNG			0x15
-#define MID_MMC_KINGSTON		0x70
 #define MID_MMC_HYNIX			0x90
 #define MID_MMC_NUMONYX			0xFE
 	_Uint32t			mid;			/* Manufacture ID */
@@ -273,27 +246,27 @@ typedef struct _sdmmc_device_info {
 	_Uint32t			spec_rev;
 	_Uint32t			security;
 
-#define DEV_CAP_HC				(1ULL << 0)	/* high capacity */
-#define DEV_CAP_HS				(1ULL << 1)	/* high speed */
-#define DEV_CAP_HS200			(1ULL << 2)	/* high speed 200 */
-#define DEV_CAP_DDR50			(1ULL << 3)	/* DDR */
-#define DEV_CAP_UHS				(1ULL << 4)	/* UHS */
-#define DEV_CAP_TRIM			(1ULL << 5)	/* TRIM supported */
-#define DEV_CAP_SECURE			(1ULL << 6)	/* Secure Purge supported */
-#define DEV_CAP_SANITIZE		(1ULL << 7)	/* SANITIZE supported */
-#define DEV_CAP_BKOPS			(1ULL << 8)	/* Background Operations supported */
-#define DEV_CAP_CMD23			(1ULL << 9)	/* CMD23 supported */
-#define DEV_CAP_SLEEP			(1ULL << 10)	/* SLEEP/AWAKE supported */
-#define DEV_CAP_ASSD			(1ULL << 11)	/* ASSD */
-#define DEV_CAP_HPI_CMD12		(1ULL << 12)
-#define DEV_CAP_HPI_CMD13		(1ULL << 13)
-#define DEV_CAP_DISCARD			(1ULL << 14)	/* Discard supported */
-#define DEV_CAP_CACHE			(1ULL << 15)
-#define DEV_CAP_HS400			(1ULL << 16)	/* high speed 400 */
-#define DEV_CAP_PWROFF_NOTIFY	(1ULL << 17)	/* power off notify supported */
-#define DEV_CAP_HS400ES			(1ULL << 18)	/* high speed 400 enhanced strobe */
-#define DEV_CAP_BKOPS_AUTO		(1ULL << 19)	/* Auto Background Operations supported */
-#define DEV_CAP_UC				(1ULL << 20)	/* ultra capacity (2TB - 128TB) */
+#define DEV_CAP_HC				(1 << 0)	/* high capacity */
+#define DEV_CAP_HS				(1 << 1)	/* high speed */
+#define DEV_CAP_HS200			(1 << 2)	/* high speed 200 */
+#define DEV_CAP_DDR50			(1 << 3)	/* DDR */
+#define DEV_CAP_UHS				(1 << 4)	/* UHS */
+#define DEV_CAP_TRIM			(1 << 5)	/* TRIM supported */
+#define DEV_CAP_SECURE			(1 << 6)	/* Secure Purge supported */
+#define DEV_CAP_SANITIZE		(1 << 7)	/* SANITIZE supported */
+#define DEV_CAP_BKOPS			(1 << 8)	/* Background Operations supported */
+#define DEV_CAP_CMD23			(1 << 9)	/* CMD23 supported */
+#define DEV_CAP_SLEEP			(1 << 10)	/* SLEEP/AWAKE supported */
+#define DEV_CAP_ASSD			(1 << 11)	/* ASSD */
+#define DEV_CAP_HPI_CMD12		(1 << 12)
+#define DEV_CAP_HPI_CMD13		(1 << 13)
+#define DEV_CAP_DISCARD			(1 << 14)	/* Discard supported */
+#define DEV_CAP_CACHE			(1 << 15)
+#define DEV_CAP_HS400			(1 << 16)	/* high speed 400 */
+#define DEV_CAP_PWROFF_NOTIFY	(1 << 17)	/* power off notify supported */
+#define DEV_CAP_HS400ES			(1 << 18)	/* high speed 400 enhanced strobe */
+#define DEV_CAP_BKOPS_AUTO		(1 << 19)	/* Auto Background Operations supported */
+#define DEV_CAP_UC				(1 << 20)	/* ultra capacity (2TB - 128TB) */
 	_Uint64t			caps;
 
 	_Uint32t			dtr;			/* current data transfer rate */
@@ -492,22 +465,28 @@ typedef struct _sdmmc_man_cmd {
 /*	_Uint8t			data[0];			variable length data */
 } SDMMC_MAN_CMD;
 
-#define DCMD_SDMMC_DEVICE_INFO			(__DIOF(_DCMD_CAM, _SIM_SDMMC + 0, struct _sdmmc_device_info))
-#define DCMD_SDMMC_DEVICE_HEALTH		(__DIOF(_DCMD_CAM, _SIM_SDMMC + 1, union _sdmmc_device_health))
-#define DCMD_SDMMC_ERASE				(__DIOTF(_DCMD_CAM, _SIM_SDMMC + 2, struct _sdmmc_erase))
-#define DCMD_SDMMC_WRITE_PROTECT		(__DIOTF(_DCMD_CAM, _SIM_SDMMC + 3, struct _sdmmc_write_protect))
-#define DCMD_SDMMC_CARD_REGISTER		(__DIOTF(_DCMD_CAM, _SIM_SDMMC + 4, struct _sdmmc_card_register))
-#define DCMD_SDMMC_ASSD_STATUS			(__DIOF(_DCMD_CAM, _SIM_SDMMC + 5, struct _sdmmc_assd_status))
-#define DCMD_SDMMC_ASSD_PROPERTIES		(__DIOF(_DCMD_CAM, _SIM_SDMMC + 6, struct _sdmmc_assd_properties))
-#define DCMD_SDMMC_ASSD_CONTROL			(__DIOT(_DCMD_CAM, _SIM_SDMMC + 7, struct _sdmmc_assd_control))
-#define DCMD_SDMMC_ASSD_APDU			(__DIOTF(_DCMD_CAM, _SIM_SDMMC + 8, struct _sdmmc_assd_apdu))
-#define DCMD_SDMMC_LOCK_UNLOCK			(__DIOT(_DCMD_CAM, _SIM_SDMMC + 9, struct _sdmmc_lock_unlock))
-#define DCMD_SDMMC_PART_INFO			(__DIOTF(_DCMD_CAM, _SIM_SDMMC + 10, struct _sdmmc_partition_info))
-#define DCMD_SDMMC_PWR_MGNT				(__DIOTF(_DCMD_CAM, _SIM_SDMMC + 11, struct _sdmmc_pwr_mgnt))
-#define DCMD_SDMMC_GEN_CMD				(__DIOTF(_DCMD_CAM, _SIM_SDMMC + 12, struct _sdmmc_gen_cmd))
-#define DCMD_SDMMC_MAN_CMD				(__DIOTF(_DCMD_CAM, _SIM_SDMMC + 13, struct _sdmmc_man_cmd))
-#define DCMD_SDMMC_DRVR_STATE			(__DIOTF(_DCMD_CAM, _SIM_SDMMC + 14, struct _sdmmc_drvr_state))
+#define DCMD_SDMMC_DEVICE_INFO			__DIOF(_DCMD_CAM, _SIM_SDMMC + 0, struct _sdmmc_device_info)
+#define DCMD_SDMMC_DEVICE_HEALTH		__DIOF(_DCMD_CAM, _SIM_SDMMC + 1, union _sdmmc_device_health)
+#define DCMD_SDMMC_ERASE				__DIOTF(_DCMD_CAM, _SIM_SDMMC + 2, struct _sdmmc_erase)
+#define DCMD_SDMMC_WRITE_PROTECT		__DIOTF(_DCMD_CAM, _SIM_SDMMC + 3, struct _sdmmc_write_protect)
+#define DCMD_SDMMC_CARD_REGISTER		__DIOTF(_DCMD_CAM, _SIM_SDMMC + 4, struct _sdmmc_card_register)
+#define DCMD_SDMMC_ASSD_STATUS			__DIOF(_DCMD_CAM, _SIM_SDMMC + 5, struct _sdmmc_assd_status)
+#define DCMD_SDMMC_ASSD_PROPERTIES		__DIOF(_DCMD_CAM, _SIM_SDMMC + 6, struct _sdmmc_assd_properties)
+#define DCMD_SDMMC_ASSD_CONTROL			__DIOT(_DCMD_CAM, _SIM_SDMMC + 7, struct _sdmmc_assd_control)
+#define DCMD_SDMMC_ASSD_APDU			__DIOTF(_DCMD_CAM, _SIM_SDMMC + 8, struct _sdmmc_assd_apdu)
+#define DCMD_SDMMC_LOCK_UNLOCK			__DIOT(_DCMD_CAM, _SIM_SDMMC + 9, struct _sdmmc_lock_unlock)
+#define DCMD_SDMMC_PART_INFO			__DIOTF(_DCMD_CAM, _SIM_SDMMC + 10, struct _sdmmc_partition_info)
+#define DCMD_SDMMC_PWR_MGNT				__DIOTF(_DCMD_CAM, _SIM_SDMMC + 11, struct _sdmmc_pwr_mgnt)
+#define DCMD_SDMMC_GEN_CMD				__DIOTF(_DCMD_CAM, _SIM_SDMMC + 12, struct _sdmmc_gen_cmd)
+#define DCMD_SDMMC_MAN_CMD				__DIOTF(_DCMD_CAM, _SIM_SDMMC + 13, struct _sdmmc_man_cmd)
+#define DCMD_SDMMC_DRVR_STATE			__DIOTF(_DCMD_CAM, _SIM_SDMMC + 14, struct _sdmmc_drvr_state)
 
 #include <_packpop.h>
 
+#endif
+
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/devb/sdmmc/public/hw/dcmd_sim_sdmmc.h $ $Rev: 879837 $")
 #endif

@@ -1,27 +1,6 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC:
- * Copyright 2014, 2020, QNX Software Systems.
+ * Copyright 2014, QNX Software Systems.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"). You
  * may not reproduce, modify or distribute this software except in
@@ -40,7 +19,7 @@
  * $
  */
 
-#include <startup.h>
+#include "startup.h"
 #include "aarch64/mmu.h"
 
 unsigned syspage_roundup = sizeof(uint64_t);
@@ -53,7 +32,7 @@ unsigned syspage_roundup = sizeof(uint64_t);
 void
 cpu_init_syspage_memory()
 {
-	set_syspage_section(&lsp.cpu.aarch64_gic_map, sizeof(_Uint64t) * PROCESSORS_MAX);
+	set_syspage_section(&lsp.cpu.aarch64_gic_map, sizeof(_Uint32t) * PROCESSORS_MAX);
 }
 
 struct syspage_entry *
@@ -79,7 +58,7 @@ cpu_alloc_syspage_memory(PADDR_T *cpupagep, PADDR_T *syspagep, unsigned spsize)
 	 */
 	size = spsize + cpsize;
 
-	syspage_paddr = calloc_ram(size, lsp.system_private.p->pagesize);
+	syspage_paddr = alloc_ram(NULL_PADDR, size, lsp.system_private.p->pagesize);
 	if (syspage_paddr == NULL_PADDR) {
 		crash("could not allocate 0x%x bytes for syspage/cpupage\n", size);
 	}
@@ -103,7 +82,6 @@ cpu_alloc_syspage_memory(PADDR_T *cpupagep, PADDR_T *syspagep, unsigned spsize)
 	sp->un.aarch64.L0_vaddr = L0_vaddr;
 	INIT_ENTRY(aarch64, gic_map);
 	INIT_ENTRY(aarch64, gicr_map);
-	INIT_ENTRY(aarch64, idreg_dump);
 
 	return((void *)syspage_paddr);
 }
@@ -123,3 +101,8 @@ cpu_syspage_remap(uintptr_t vaddr, paddr_t paddr, size_t size, int flags)
 {
 	elf_map(vaddr, paddr, size, flags);
 }
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/startup/lib/aarch64/cpu_syspage_memory.c $ $Rev: 944535 $")
+#endif

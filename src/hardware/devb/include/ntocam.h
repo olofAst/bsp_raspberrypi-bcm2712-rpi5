@@ -1,25 +1,4 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC: 
  * Copyright 2008, QNX Software Systems.  
  *  
@@ -62,14 +41,14 @@
 #define _NTO_CAM_VERSION					100
 
 #define XSTR(x)								#x
-#define CAM_STRINGIZE(x)					XSTR((x))
-#define CAM_ARRAY_SIZE( _x )				( sizeof( (_x) ) / sizeof( (_x)[0] ) )
+#define CAM_STRINGIZE(x)					XSTR(x)
+#define CAM_ARRAY_SIZE( _x )				( sizeof( _x ) / sizeof( ( _x )[0] ) )
 
 #define CAM_PDRV_VERSION					0x4
-#define CAM_INVALID_NUM						(-0xBAD1)
-#define CAM_INVALID_NUM64					(-0xBAD1LL)
+#define CAM_INVALID_NUM						-0xBAD1
+#define CAM_INVALID_NUM64					-0xBAD1LL
 
-#define CAM_ALIGN( _val, _align )			CAM_ALIGN_MASK( (_val), ( typeof( (_val) ) )(_align) - 1 )
+#define CAM_ALIGN( _val, _align )			CAM_ALIGN_MASK( _val, ( typeof( _val ) )(_align) - 1 )
 #define CAM_ALIGN_MASK( _val, _mask )		( ( (_val) + (_mask) ) & ~(_mask) )
 
 #define CAM_ENDIAN_SWAP32( _d, _c )			do { ENDIAN_SWAP32( (_d) ); (_d)++; } while( --(_c) )
@@ -79,18 +58,17 @@
 
 #define CAM_BITMASK_LE64( _hbit, _lbit )	( ( ( ~0ULL ) << ( _lbit ) ) & ( ~0ULL >> ( 64 - ( _lbit ) - (_hbit) ) ) )
 #define CAM_BITMASK_LE32( _hbit, _lbit )	( ( ( ~0UL ) << ( _lbit ) ) & ( ~0UL >> ( 32 - ( _lbit ) - (_hbit) ) ) )
-#define CAM_BIT_LE64( _bit )				_ONEBIT64L( (_bit) )
-#define CAM_BIT_LE32( _bit )				_ONEBIT32L( (_bit) )
-#define CAM_BIT_BE64( _bit )				_ONEBIT64B( (_bit) )
-#define CAM_BIT_BE32( _bit )				_ONEBIT32B( (_bit) )
+#define CAM_BIT_LE64( _bit )				_ONEBIT64L( _bit )
+#define CAM_BIT_LE32( _bit )				_ONEBIT32L( _bit )
+#define CAM_BIT_BE64( _bit )				_ONEBIT64B( _bit )
+#define CAM_BIT_BE32( _bit )				_ONEBIT32B( _bit )
 
 #define CAM_STACK_SIZE						16384
 #define CAM_TSTATE_CREATING					0x00
 #define CAM_TSTATE_INITIALIZED				0x01
 #define CAM_TSTATE_INIT_FAILURE				0x02
 
-#define CAM_SLOG_PAGES						16			// 16 4k pages
-
+#define SCSI_IO_CBF_PRIORITY				21
 #define SCSI_IO_CBF_PULSE_CODE				0x73
 
 
@@ -143,40 +121,40 @@ static inline paddr64_t cam_mphys( const void *addr )
 {
 	off64_t offset;
 
-	if( mem_offset64( addr, -1, 1, &offset, NULL ) == -1 ) {
-		return( (paddr64_t) -1LL );
+	if( mem_offset64( addr, -1, 1, & offset, 0 ) == -1 ) {
+		return( (paddr64_t) -1 );
 	}
 
 	return( offset );
 }
 
 int cam_cdb( CCB *);
-#define cam_cdb( ccb )				( (CDB *)(ccb)->cam_cdb_io.cam_cdb_bytes )
+#define cam_cdb( ccb )				( (CDB *)ccb->cam_cdb_io.cam_cdb_bytes )
 
 int cam_cdb_lun( DEVEXT *);				// only set lun in the cdb when SCSI version < 2
 #define cam_cdb_lun( dext )			( ( (dext)->version & INQ_VANSI ) < 2 ? SC_LUN_CDB( (dext)->lun ) : 0 )
 
 void cam_set_pdrvr( CCB *, void *);
-#define cam_set_pdrvr( ccb, pdrv )	( (ccb)->cam_pdrv_ptr = (void *)(pdrv) )
+#define cam_set_pdrvr( ccb, pdrv )	( ccb->cam_pdrv_ptr = (void *)pdrv )
 
 void cam_set_cbf( CCB *, void *);
-#define cam_set_cbf( ccb, cbf )		( (ccb)->cam_cbfcnp = (void *)(cbf) )
+#define cam_set_cbf( ccb, cbf )		( ccb->cam_cbfcnp = (void *)cbf )
 
 void cam_data_ptr( CCB_SCSIIO *, void *);
-#define cam_data_ptr( ccb, data )	(ccb)->cam_data.cam_data_ptr = 					\
-									( (ccb)->cam_ch.cam_flags & CAM_DATA_PHYS ) ?		\
+#define cam_data_ptr( ccb, data )	ccb->cam_data.cam_data_ptr = 					\
+									( ccb->cam_ch.cam_flags & CAM_DATA_PHYS ) ?		\
 									cam_mphys( (void *)(uintptr_t)(data) ) : (uintptr_t)(data)
 
 
 #define cam_clear_ccb(_x)			( memset( ((char *)(_x)) +							\
 									offsetof(struct ccb_header, cam_func_code), 0x00,	\
-									(_x)->cam_ch.cam_ccb_len -							\
+									_x->cam_ch.cam_ccb_len -							\
 									offsetof(struct ccb_header, cam_func_code)) )
 
 void cam_set_sense(CCB *, void *);
-#define cam_set_sense(ccb, sense)	( ((CCB_SCSIIO *)(ccb))->cam_sense_ptr =	\
+#define cam_set_sense(ccb, sense)	( ((CCB_SCSIIO *)ccb)->cam_sense_ptr =	\
 									(unsigned char *)(sense),				\
-									(((CCB_SCSIIO *)(ccb))->cam_sense_len =	\
+									(((CCB_SCSIIO *)ccb)->cam_sense_len =	\
 									sizeof(*(sense))) )
 
 void cam_target( CCB_SCSIIO *, DEVEXT * );
@@ -192,11 +170,11 @@ typedef struct _cam_entry {
 	int		(*scsi_scan_bus)( int path );
 	int		(*scsi_scan_devs)( int type, int (*func)( CCB_PATHINQ *, CCB_GETDEV *));
 	int		(*scsi_setasync_cb)( ASYNC_INFO **alist, CCB_SETASYNC *ccb );
-	void	*(*scsi_ccb_alloc)(void);
+	CCB		*(*scsi_ccb_alloc)(void);
 	void	(*scsi_ccb_free)(CCB *);
-	void	*(*scsi_malloc)( int size, int mapf );
+	void	*(*scsi_malloc)( int size, int mflags );
 	void	(*scsi_free)( void *addr, int size );
-	DEVOBJ	*(*scsi_create_device)( CCB_PATHINQ *ccb_path, CCB_GETDEV *ccb_gd, int ext_size, int max_io );
+	DEVOBJ	*(*scsi_create_device)( CCB_PATHINQ *ccb_path, CCB_GETDEV *ccb_getdev, int ext_size, int max_io );
 	int		(*scsi_io)( void *hdl, ioreq_t *ioreq );
 	int		(*scsi_abort)( void *hdl, ioreq_t *ioreq, unsigned flags );
 	int		(*scsi_devctl)(void *hdl, resmgr_context_t *ctp, int ioflag, ioreq_t *tag, unsigned dcmd, void *data, size_t size, int *ret );
@@ -216,8 +194,6 @@ typedef struct _cam_entry {
 	int		(*scsi_synchronize_cache)( DEVOBJ *dobj, baddr_t *lba );
 	int		(*scsi_set_timeout)( DEVOBJ *dobj, int g1, int g2, int g3 );
 } cam_entry_t;
-
-#define _CAM_ENTRY_NFUNCS	((sizeof(cam_entry_t) - offsetof(cam_entry_t, scsi_scan_bus)) / sizeof(void *))
 
 #define SRB_FLG_BOUNCE		0x01		// bounce data to/from cache blocks
 #define SRB_FLG_CACHE		0x02		// cache needs to be flushed/invalidated
@@ -354,17 +330,6 @@ struct _devobj_extension {
 	uint32_t				max_io_wr;		// Maximum write blocks device can handle
 };
 
-typedef struct _device_defect {
-	char		*product_id;				// product and vendor ids
-#define DEFECT_FLG_TAGGED		0x20U	// disable tagged queuing
-#define DEFECT_FLG_SYNC			0x10U	// disable synchronous transfers
-#define DEFECT_FLG_DISC			0x08U	// disable disconnect
-#define DEFECT_FLG_WCE			0x04U	// disable write cache
-#define DEFECT_FLG_LUN			0x02U	// disable LUN scan
-#define DEFECT_FLG_AUTO_SRP		0x01U	// disable auto save/restore
-	uint32_t	dflags;					// defect flags
-} DEVICE_DEFECT;
-
 int		scsi_init( void );
 int		scsi_dinit( void );
 CCB		*scsi_ccb_alloc( void );
@@ -372,14 +337,14 @@ void	scsi_ccb_free( CCB *ccb );
 int		scsi_scan_devs( int type, int (*func)( CCB_PATHINQ *, CCB_GETDEV *) );
 int		scsi_scan_bus( int path );
 int		scsi_setasync_cb( ASYNC_INFO **alist, CCB_SETASYNC *ccb );
-void	*scsi_malloc( int size, int mapf );
+void	*scsi_malloc( int size, int mflags );
 void	scsi_free( void *addr, int size );
 int		scsi_io( void *hdl, ioreq_t *ioreq );
 int		scsi_iomsg( void *hdl, resmgr_context_t *ctp, int ioflag, ioreq_t *tag, io_msg_t *msg );
 int		scsi_abort( void *hdl, ioreq_t *ioreq, unsigned flags );
 int		scsi_devctl( void *hdl, resmgr_context_t *ctp, int ioflag, ioreq_t *tag, unsigned dcmd, void *data, size_t size, int *ret );
 int		scsi_action( DEVOBJ *dobj, CCB_SCSIIO *ccb );
-int		scsi_action_wait( DEVOBJ *dobj, CCB_SCSIIO *ccb, int rcount );
+int		scsi_action_wait( DEVOBJ *dobj, CCB_SCSIIO *ccb, int retries );
 int		scsi_release_simq( DEVOBJ *dobj );
 int		scsi_read_capacity( DEVOBJ *dobj );
 int 	scsi_log_sense( DEVOBJ *dobj, int page, char *ldata, int opt, int pc, int parm_ptr, int len );
@@ -389,14 +354,14 @@ int		scsi_mode_select( DEVOBJ *dobj, char *pdata, int len, int save );
 void	*scsi_mode_page( char *msdata, int page, int len, int type );
 int		scsi_reserve( DEVOBJ *dobj );
 int		scsi_release( DEVOBJ *dobj );
-int		scsi_synchronize_cache( DEVOBJ *dobj, baddr_t *r_lba );
+int		scsi_synchronize_cache( DEVOBJ *dobj, baddr_t *lba );
 int		scsi_test_ready( DEVOBJ *dobj );
 int		scsi_error( DEVOBJ *dobj, CCB_SCSIIO *ccb, int *status, int rcount );
 int		scsi_interpret_sense( DEVOBJ *dobj, CCB_SCSIIO *ccb, int *status, int rcount );
 int		scsi_inquiry( DEVOBJ *dobj, int opt, int pc, void *inq, int inq_len );
 int		scsi_unit_ready( DEVOBJ *dobj );
 int		scsi_removal( DEVOBJ *dobj, int prevent );
-DEVOBJ	*scsi_create_device( CCB_PATHINQ *ccb_path, CCB_GETDEV *ccb_gd, int ext_size, int max_io );
+DEVOBJ	*scsi_create_device( CCB_PATHINQ *ccb_path, CCB_GETDEV *ccb_getdev, int ext_size, int max_io );
 int		scsi_set_timeout( DEVOBJ *dobj, int g1, int g2, int g3 );
 int		scsi_destroy_device( DEVOBJ *dobj );
 int		scsi_negotiate( DEVOBJ *dobj );
@@ -419,9 +384,9 @@ int64_t	cam_parse_number64( const char *str );
 int		cam_strtol( const char *str, char **cp );
 int64_t	cam_strtoll( const char *str, char **cp );
 int		cam_parse_tuple( char *string, char separator, char **entry, ... );
-int		cam_device_opt( path_id_t path, target_id_t target, lun_id_t lun, char *value );
+int		cam_device_opt( path_id_t path_id, target_id_t target_id, lun_id_t lun, char *value );
 char	*cam_module_args( int argc, char *argv[], char *mname );
-int		cam_blk_shift( unsigned blen );
+int		cam_blk_shift( unsigned blk_len );
 int		cam_pdrvr_options( PDRVR_EXT *pext, DEVOBJ *dobj, char *options );
 int		cam_set_thread_state( uint32_t *tstate, int state );
 int		cam_create_thread( pthread_t *tid, pthread_attr_t *aattr, void *(*func)(void *), void *arg, int priority, uint32_t *tstate, char *name );
@@ -431,13 +396,15 @@ extern void _cam_free( void *p, char *f, int l );
 extern void *_cam_calloc( size_t n, size_t sz, char *f, int l );
 extern void *_cam_realloc( void *p, size_t sz, char *f, int l );
 
-#define cam_free( _p )			_cam_free( (_p), __FILE__, __LINE__ )
-#define cam_calloc( _n, _sz )	_cam_calloc( (_n), (_sz), __FILE__, __LINE__ )
-#define cam_realloc( _p, _sz )	_cam_realloc( (_p), (_sz), __FILE__, __LINE__ )
+#define cam_free( _p ) _cam_free( (_p), __FILE__, __LINE__ )
+#define cam_calloc( _n, _sz ) _cam_calloc( (_n), (_sz), __FILE__, __LINE__ )
+#define cam_realloc( _p, _sz ) _cam_realloc( (_p), (_sz), __FILE__, __LINE__ )
 #else
-#define cam_free	(free)
-#define cam_calloc	(calloc)
-#define cam_realloc	(realloc)
+#define cam_free		free
+#define cam_calloc		calloc
+#define cam_realloc		realloc
+
+#endif
 
 #endif
 
@@ -445,9 +412,12 @@ int cam_configure( const MODULE_ENTRY *sim_entry, int nsims, int argc, char *arg
 
 int xpt_configure( const MODULE_ENTRY *sim_entry, int nsims, int argc, char *argv[] );
 
-int dll_pdrvr_init( cam_entry_t *cfuncs, int argc, char *argv[] );
+int dll_pdrvr_init( cam_entry_t *cam_funcs, int argc, char *argv[] );
 
 void *scsi_start_resmgr( DEVEXT *dext );
 int scsi_destroy_resmgr( void *hdl );
 
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/devb/include/ntocam.h $ $Rev: 915926 $")
 #endif

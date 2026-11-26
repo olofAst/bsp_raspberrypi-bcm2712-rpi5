@@ -1,11 +1,18 @@
-%C - RP1 MSIX configuration utility
+%C - RP1 MSI-X configuration utility (SDP 7.1, no pci-server needed)
 
 Syntax:
 %C [options]
 
 Options:
-   -i: setup rpi IRQs to use, separated by ','
-   -v: set verbosity level
+   -i irq[,irq...]  RP1 IRQs to enable (default 6,31,36). RP1 irq n is
+                    delivered as GIC interrupt 160+n.
+   -B               Only print the PCI address at which RP1 sees host RAM
+                    (the value for the io-usb-otg "bmstr=" option)
+   -c               Disable RP1 MSI-X
+   -v               Increase verbosity (repeat for a register dump)
 
-Example - setup MSIX for ethernet (irq 6), USB 2.0 (irq 31), 3.0 (irq 36):
+Requires "pciex4_reset=0" in config.txt so that the firmware leaves the
+PCIe link to RP1 configured.
+
+Example - ethernet (irq 6), USB host 0 (irq 31) and USB host 1 (irq 36):
    %C -i 6,31,36

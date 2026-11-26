@@ -1,25 +1,4 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC:
  * Copyright 2008, QNX Software Systems. 
  * 
@@ -44,12 +23,13 @@
 
 
 
-#include <startup.h>
+#include "startup.h"
 
 static void	(*print_char)(int) = dummy_print_char;
 
 static void
 one_char(char c) {
+	mdriver_check();
 	if(c == '\n') print_char('\r');
 	print_char(c);
 }
@@ -136,7 +116,7 @@ vmsg(const char *fmt, va_list args) {
 		}
 	}
 }
-
+				
 void
 kprintf(const char *fmt, ...) {
 	va_list args;
@@ -147,20 +127,10 @@ kprintf(const char *fmt, ...) {
 }	
 
 static char *string_ptr;
-static size_t ksnprinf_len = 0;
-static size_t ksnprintf_max_len = 0;
 
 static void
 string_print_char(int c) {
 	*string_ptr++ = c;
-}
-
-static void
-string_print_n_char(const int ch) {
-	if(ksnprinf_len < ksnprintf_max_len) {
-		*string_ptr++ = (char)ch;
-		ksnprinf_len++;
-	}
 }
 
 
@@ -177,25 +147,7 @@ ksprintf(char *buff, const char *fmt, ...) {
 	*string_ptr = '\0';
 	print_char = old_print_char;
 }
-
-void
-ksnprintf(char * const buff, const size_t num, const char * const fmt, ...) {
-	va_list args;
-	void	(*old_print_char)(int) = print_char;
-
-	print_char = string_print_n_char;
-	ksnprinf_len = 0;
-	ksnprintf_max_len = num;
-	string_ptr = buff;
-	va_start(args, fmt);
-	vmsg(fmt, args);
-	va_end(args);
-	*string_ptr = '\0';
-	ksnprinf_len = 0;
-	ksnprintf_max_len = 0;
-	print_char = old_print_char;
-}
-
+				
 void
 crash(const char *fmt, ...) {
 	va_list args;
@@ -215,3 +167,8 @@ void	(*
 get_print_char(void))(int) {
 	return print_char;
 }
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/startup/lib/kprintf.c $ $Rev: 780356 $")
+#endif

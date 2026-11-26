@@ -1,25 +1,4 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC:
  * Copyright 2020, QNX Software Systems.
  *
@@ -40,7 +19,13 @@
  * $
  */
 
-#include <startup.h>
+#include "startup.h"
+
+static const struct callout_slot	timer_callouts[] = {
+	{ CALLOUT_SLOT( timer_load, _armv8) },
+	{ CALLOUT_SLOT( timer_value, _armv8) },
+	{ CALLOUT_SLOT( timer_reload, _armv8) },
+};
 
 static unsigned
 timer_start_v8gt(void) {
@@ -55,6 +40,9 @@ timer_diff_v8gt(unsigned const start) {
 void
 init_qtime_v8gt(unsigned const vcnt_intr, unsigned const hvcnt_intr) {
 	struct qtime_entry	*qtime;
+
+	aarch64_hwi_add_ppi("vcnt", vcnt_intr);
+	aarch64_hwi_add_ppi("hvcnt", hvcnt_intr);
 
 	qtime = alloc_qtime();
 
@@ -73,16 +61,22 @@ init_qtime_v8gt(unsigned const vcnt_intr, unsigned const hvcnt_intr) {
 	 * Each core has its own generic timer registers, so we force the
 	 * system timer to cpu0's timer.
 	 */
+	qtime->flags |= QTIME_FLAG_TIMER_ON_CPU0;
 	qtime->cycles_per_sec = timer_freq;
-	if (hypervisor_get_required_flags() == (HYP_FLAG_ENABLED | HYP_FLAG_EL2_HOST)) {
-		qtime->intr = hvcnt_intr;
-	} else {
-		qtime->intr = vcnt_intr;
-	}
+	qtime->intr = vcnt_intr;
 	qtime->timer_load_max = 0x7fffffffffffffffull;
 
 	/*
 	 * Disable CNTV interrupt
 	 */
 	aa64_sr_wr32(cntv_ctl_el0, 0);
+
+	add_callout_array(timer_callouts, sizeof(timer_callouts));
 }
+
+
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/startup/lib/aarch64/init_qtime_v8gt.c $ $Rev: 912447 $")
+#endif

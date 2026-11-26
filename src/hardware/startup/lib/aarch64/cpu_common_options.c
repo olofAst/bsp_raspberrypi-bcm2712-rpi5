@@ -1,25 +1,4 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC:
  * Copyright 2014, QNX Software Systems.
  *
@@ -40,7 +19,7 @@
  * $
  */
 
-#include <startup.h>
+#include "startup.h"
 
 static char *erra_opts[] = {
 		"meltdown",
@@ -48,33 +27,31 @@ static char *erra_opts[] = {
 		"spectrev2",
 		"~spectrev2",
 		"ssbs",
-		"~ssbs",
-		NULL
+		"~ssbs"
 };
 
 static char *xopts[] = {
-		"cachesnooped",
+		"xferslots",
 		"pagesize",
-		NULL
 };
 
 int
 cpu_handle_common_option(int opt)
 {
 	char *cp, *value;
-	
-	char *const ext_opts[] = {
-		"sve",
-		NULL
-	};
 
 	switch(opt) {
 	case 'X':
 		cp = optarg;
 		while(*cp != '\0') {
 			switch(getsubopt(&cp, xopts, &value)) {
-			case 0:
-				cache_snooped = CACHE_FLAG_SNOOPED;
+			case 0: 
+				nxfer_slots =  strtoul( value, 0, 16 );
+				if(nxfer_slots < 2) {
+					crash("Number of slots needs to be at least 2\n");
+				}
+				//make sure it's power of 2.
+				nxfer_slots = (1u << (sizeof(int) * 8 - __builtin_clz(nxfer_slots) - 1));
 				break;
 			case 1:
 				__page_size = strtoul( value, 0, 16 );
@@ -117,46 +94,13 @@ cpu_handle_common_option(int opt)
 	case 'U':
 		pauth_active = 1;
 		return 1;
-	case 'u':
-		if ( strcmp("arg", optarg) == 0 ) {
-			fdt_boot_option = FDT_BOOTOPT_ADDRPASS_BY_ARGS;
-		}
-		else if ( strcmp("reg", optarg) == 0 ) {
-			fdt_boot_option = FDT_BOOTOPT_ADDRPASS_BY_REG;
-		}
-		else {
-			/* if no option string is specified, set default boot option */
-			fdt_boot_option = FDT_BOOTOPT_ADDRPASS_BY_REG;
-		}
-		fdt_init_bootopt();
-		return 1;
-	case 'Q':
-		if (strcmp(optarg, "enable") == 0) {
-			hypervisor_set_options(HYP_FLAG_ENABLED);
-		} else if (strcmp(optarg, "disable") == 0) {
-			hypervisor_set_options(HYP_FLAG_DISABLED);
-		} else if (strcmp(optarg, "enable,el1-host") == 0) {
-			hypervisor_set_options(HYP_FLAG_ENABLED | HYP_FLAG_EL1_HOST);
-		} else if (strcmp(optarg, "enable,el2-host") == 0) {
-			hypervisor_set_options(HYP_FLAG_ENABLED | HYP_FLAG_EL2_HOST);
-		} else {
-			hypervisor_set_options(HYP_FLAG_INVALID);
-		}
-		return 1;
-	case 'e': // cpu extensions
-		cp = optarg;
-		while(*cp != '\0') {
-			switch(getsubopt(&cp, ext_opts, &value)) {
-			case 0:
-				sve_requested = 1;
-				break;
-			default:
-				break;
-			}
-		}
-		return 1;
 	default:
 		return 0;
 	}
 
 }
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/startup/lib/aarch64/cpu_common_options.c $ $Rev: 931478 $")
+#endif

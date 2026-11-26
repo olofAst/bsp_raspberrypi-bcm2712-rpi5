@@ -1,27 +1,6 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC:
- * Copyright 2008, 2020, 2024, BlackBerry Limited.
+ * Copyright 2008, 2020, QNX Software Systems.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"). You
  * may not reproduce, modify or distribute this software except in
@@ -29,7 +8,7 @@
  * at: http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" basis,
+ * distributed under the License is distributed on an "AS IS" basis, 
  * WITHOUT WARRANTIES OF ANY KIND, either express or implied.
  *
  * This file may contain contributions from others, either as
@@ -40,10 +19,8 @@
  * $
  */
 
-#include <startup.h>
+#include "startup.h"
 #include <hw/uefi.h>
-
-#define UEFI_EXIT_RETRY_MAX		2
 
 /*
  * EFI Image Handle (QNX startup image)
@@ -89,57 +66,40 @@ static void _uefi_exit_boot_services(void)
 		_Uintn map_size = 0;
 		EFI_MEMORY_DESCRIPTOR *desc = NULL;
 		EFI_STATUS status = 0;
-		unsigned uefi_exit_retry_cnt = 0;
 
 		if (debug_flag > 0) kprintf("%s, exiting\n", __FUNCTION__);
 		uefi_io_flush();
 
+		/* Get the UEFI memory map size */
+		status = bs->GetMemoryMap(&map_size, desc, &map_key, &desc_size, &desc_version);
+		if (status != EFI_BUFFER_TOO_SMALL) {
+			crash("Failed to query the UEFI memory map with error %l\n", status);
+		}
+
 		do {
-			/* Get the UEFI memory map size */
+			/* Allocating the memory creates at least one new descriptor */
+			map_size += desc_size;
+			status = bs->AllocatePool(EfiLoaderData, map_size, (void **)&desc);
+			if ((desc == NULL) || (status != EFI_SUCCESS)) {
+				crash("Fatal error while allocating the UEFI memory map buffer\n");
+			}
+
+			/* Get the UEFI memory map */
 			status = bs->GetMemoryMap(&map_size, desc, &map_key, &desc_size, &desc_version);
-			if (status != EFI_BUFFER_TOO_SMALL) {
-				crash("Failed to query the UEFI memory map with error %l\n", status);
-			}
-
-			do {
-				/* Allocating the memory creates at least one new descriptor */
-				map_size += desc_size;
-				status = bs->AllocatePool(EfiLoaderData, map_size, (void **)&desc);
-				if ((desc == NULL) || (status != EFI_SUCCESS)) {
-					crash("Fatal error while allocating the UEFI memory map buffer\n");
-				}
-
-				/* Get the UEFI memory map */
-				status = bs->GetMemoryMap(&map_size, desc, &map_key, &desc_size, &desc_version);
-				if (status != EFI_SUCCESS) {
-					bs->FreePool(desc);
-					desc = NULL;
-				}
-			} while (status == EFI_BUFFER_TOO_SMALL);
-
 			if (status != EFI_SUCCESS) {
-				crash("Failed to get the UEFI memory map with error %l\n", status);
-			}
-
-			status = bs->ExitBootServices(efi_image_handle, map_key);
-
-			if ((status == EFI_INVALID_PARAMETER) && (uefi_exit_retry_cnt <= UEFI_EXIT_RETRY_MAX)) {
-				uefi_exit_retry_cnt++;
-				kprintf("retry uefi exit: %u\n", uefi_exit_retry_cnt);
 				bs->FreePool(desc);
 				desc = NULL;
-				map_size=0;
-				continue;
 			}
-			else if (status != EFI_SUCCESS) {
-				kprintf("exit status: %u\n", status);
-				crash("Could not exit boot services\n");
-			}
-			else {							/* EFI_SUCCESS */
-				break;
-			}
-		} while (uefi_exit_retry_cnt <= UEFI_EXIT_RETRY_MAX);
+		} while (status == EFI_BUFFER_TOO_SMALL);
+		if (status != EFI_SUCCESS) {
+			crash("Failed to get the UEFI memory map with error %l\n", status);
+		}
 
+		status = bs->ExitBootServices(efi_image_handle, map_key);
+		if (status != EFI_SUCCESS) {
+			kprintf("exit status: %u\n", status);
+			crash("Could not exit boot services\n");
+		}
 		efi_system_table->ConOut = NULL;	/* no more output */
 		efi_system_table->ConIn = NULL;		/* no more input */
 		efi_boot_services = NULL;			/* no more EFI_BOOT_SERVICES */
@@ -160,3 +120,9 @@ void uefi_exit_init(void)
 	uefi_exit_boot_services_f = _uefi_exit_boot_services;
 	++uefi_init_cnt;
 }
+
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION( "$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/startup/lib/uefi.c $ $Rev: 916338 $" );
+#endif

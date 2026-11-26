@@ -1,508 +1,512 @@
 /*
- * Notice on Software Maturity and Quality
+ * $QNXLicenseC:
+ * Copyright 2025 QNX Software Systems.
  *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
+ * Licensed under the Apache License, Version 2.0 (the "License"). You
+ * may not reproduce, modify or distribute this software except in
+ * compliance with the License. You may obtain a copy of the License
+ * at: http://www.apache.org/licenses/LICENSE-2.0
  *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" basis,
+ * WITHOUT WARRANTIES OF ANY KIND, either express or implied.
  *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
+ * This file may contain contributions from others, either as
+ * contributors under the License or as licensors under other terms.
+ * Please review this entire file for other proprietary rights or license
+ * notices, as well as the QNX Development Suite License Guide at
+ * http://licensing.qnx.com/license-guide/ for other information.
+ * $
  */
 
 /*
- * Copyright (c) 2024, BlackBerry Limited.
+ * RP1 MSI-X configuration utility, SDP 7.1 version.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * The SDP 8.0 BSP does this work with pci-server and the pci_hw-bcm2712-rpi5.so
+ * hardware module. Neither a BCM2712 PCI hardware module nor a need for a
+ * general PCI bus exist in this 7.1 port, so this utility talks to the hardware
+ * directly:
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ *   RP1 peripheral irq n
+ *     -> RP1 MSI-X vector n (table in RP1 BAR0, per-vector MSIX_CFG in RP1 BAR1)
+ *     -> PCIe memory write of <n> to the doorbell address 0xff_ffff_f000
+ *     -> BCM2712 PCIe2 root complex inbound window
+ *     -> MIP0 interrupt controller (0x10_0013_0000)
+ *     -> GIC interrupt 160 + n (edge triggered)
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * It relies on the Pi 5 firmware having trained the PCIe link and assigned the
+ * RP1 BARs, which requires "pciex4_reset=0" in config.txt. The root complex is
+ * NOT reset or re-enumerated here; only what is missing for interrupts is added.
+ *
+ * Register definitions follow the Raspberry Pi Linux drivers
+ * (pcie-brcmstb.c, irq-bcm2712-mip.c, mfd/rp1.c).
  */
 
-
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
-#include <sys/mman.h>
-#include <assert.h>
-#include <unistd.h>
-#include <sys/neutrino.h>
 #include <errno.h>
+#include <unistd.h>
+#include <sys/mman.h>
+#include <sys/neutrino.h>
 #include <hw/inout.h>
 
-#include <pci/pci.h>
-#include <pci/cap_pcie.h>
-#include <pci/cap_msix.h>
+/* ---- BCM2712 PCIe2 root complex (the one RP1 hangs off) ---- */
+#define RC_PADDR                        0x1000120000ULL
+#define RC_SIZE                         0xa000U
 
-#ifndef NUM_ELTS
-#define NUM_ELTS(x)        (sizeof(x)/sizeof(x[0]))
-#endif
+#define RC_CFG_COMMAND                  0x04U
+#define RC_CFG_BUSES                    0x18U
+#define RC_CFG_MEM_BASE_LIMIT           0x20U
 
-#define BCM2712_MIP_INT_CONTROLLER_ADDR   (0x1000130000UL)
-#define BCM2712_MIP_INT_CONTROLLER_SIZE   (0xc0U)
-  #define MIP_INT_CLEARED                 (0x10U)
-  #define MIP_INT_CFGL_HOST               (0x20U)
-  #define MIP_INT_CFGH_HOST               (0x30U)
-  #define MIP_INT_MASKL_HOST              (0x40U)
-  #define MIP_INT_MASKH_HOST              (0x50U)
-  #define MIP_INT_MASKL_VPU               (0x60U)
-  #define MIP_INT_MASKH_VPU               (0x70U)
-  #define MIP_INT_STATUSL_HOST            (0x80U)
-  #define MIP_INT_STATUSH_HOST            (0x90U)
-  #define MIP_INT_STATUSL_VPU             (0xa0U)
-  #define MIP_INT_STATUSH_VPU             (0xb0U)
+#define RC_CPU_2_PCIE_MEM_WIN0_LO       0x400cU
+#define RC_CPU_2_PCIE_MEM_WIN0_HI       0x4010U
+#define RC_PCIE_STATUS                  0x4068U
+#define  RC_PCIE_STATUS_DL_ACTIVE       0x20U
+#define  RC_PCIE_STATUS_PHYLINKUP       0x10U
+#define RC_MEM_WIN0_BASE_LIMIT          0x4070U
+#define RC_MEM_WIN0_BASE_HI             0x4080U
+#define RC_EXT_CFG_DATA                 0x8000U
+#define RC_EXT_CFG_INDEX                0x9000U
 
-#define RP1_PCIE_MSIX_ADDR                (0x1f00108000UL)
-#define RP1_PCIE_MSIX_SIZE                (0x1000U)
-#define RP1_PCIE_MSIX_IRQ_SIZE            (64U)
-#define RP1_PCIE_MSIX_IRQ_0_IO_BANK0      (0U)
-#define RP1_PCIE_MSIX_IRQ_1_IO_BANK1      (1U)
-#define RP1_PCIE_MSIX_IRQ_2_IO_BANK2      (2U)
-#define RP1_PCIE_MSIX_IRQ_3_AUDIO_IN      (3U)
-#define RP1_PCIE_MSIX_IRQ_4_AUDIO_OUT     (4U)
-#define RP1_PCIE_MSIX_IRQ_5_PWM0          (5U)
-#define RP1_PCIE_MSIX_IRQ_6_ETH           (6U)
-#define RP1_PCIE_MSIX_IRQ_7_I2C0          (7U)
-#define RP1_PCIE_MSIX_IRQ_8_I2C1          (8U)
-#define RP1_PCIE_MSIX_IRQ_9_I2C2          (9U)
-#define RP1_PCIE_MSIX_IRQ_10_I2C3         (10U)
-#define RP1_PCIE_MSIX_IRQ_11_I2C4         (11U)
-#define RP1_PCIE_MSIX_IRQ_12_I2C5         (12U)
-#define RP1_PCIE_MSIX_IRQ_13_I2C6         (13U)
-#define RP1_PCIE_MSIX_IRQ_14_I2S0         (14U)
-#define RP1_PCIE_MSIX_IRQ_15_I2S1         (15U)
-#define RP1_PCIE_MSIX_IRQ_16_I2S2         (16U)
-#define RP1_PCIE_MSIX_IRQ_17_SDIO0        (17U)
-#define RP1_PCIE_MSIX_IRQ_18_SDIO1        (18U)
-#define RP1_PCIE_MSIX_IRQ_19_SPI0         (19U)
-#define RP1_PCIE_MSIX_IRQ_20_SPI1         (20U)
-#define RP1_PCIE_MSIX_IRQ_21_SPI2         (21U)
-#define RP1_PCIE_MSIX_IRQ_22_SPI3         (22U)
-#define RP1_PCIE_MSIX_IRQ_23_SPI4         (23U)
-#define RP1_PCIE_MSIX_IRQ_24_SPI5         (24U)
-#define RP1_PCIE_MSIX_IRQ_25_UART0        (25U)
-#define RP1_PCIE_MSIX_IRQ_26_TIMER_0      (26U)
-#define RP1_PCIE_MSIX_IRQ_27_TIMER_1      (27U)
-#define RP1_PCIE_MSIX_IRQ_28_TIMER_2      (28U)
-#define RP1_PCIE_MSIX_IRQ_29_TIMER_3      (29U)
+/* Inbound windows ("RC BARs"): PCI address + size, and the CPU address they remap to */
+#define RC_NUM_INBOUND_WINS             10U
+#define RC_BAR_ENABLE_REMAP             0x1U
+#define RAM_PCI_ADDR                    0x1000000000ULL     /* default PCI address of host RAM */
 
-#define RP1_PCIE_MSIX_IRQ_31_USB2         (31U)
-#define RP1_PCIE_MSIX_IRQ_36_USB3         (36U)
+/* ---- BCM2712 MIP0 (MSI-X interrupt peripheral for PCIe2) ---- */
+#define MIP_PADDR                       0x1000130000ULL
+#define MIP_SIZE                        0x1000U
+#define MIP_INT_CFGL_HOST               0x20U
+#define MIP_INT_CFGH_HOST               0x30U
+#define MIP_INT_MASKL_HOST              0x40U
+#define MIP_INT_MASKH_HOST              0x50U
+#define MIP_INT_MASKL_VPU               0x60U
+#define MIP_INT_MASKH_VPU               0x70U
+#define MIP_MSI_PCI_ADDR                0xfffffff000ULL     /* doorbell as seen from PCIe */
+#define MIP_GIC_IRQ_BASE                160U                /* GIC SPI 128 */
 
-#define RP1_PCIE_MSIX_IRQ_40_DMA          (40U)
-#define RP1_PCIE_MSIX_IRQ_41_PWM1         (41U)
-#define RP1_PCIE_MSIX_IRQ_42_UART1        (42U)
-#define RP1_PCIE_MSIX_IRQ_43_UART2        (43U)
-#define RP1_PCIE_MSIX_IRQ_44_UART3        (44U)
-#define RP1_PCIE_MSIX_IRQ_45_UART4        (45U)
-#define RP1_PCIE_MSIX_IRQ_46_UART5        (46U)
-#define RP1_PCIE_MSIX_IRQ_47_MIPI0        (47U)
-#define RP1_PCIE_MSIX_IRQ_48_MIPI1        (48U)
-#define RP1_PCIE_MSIX_IRQ_49_VIDEO_OUT    (49U)
-#define RP1_PCIE_MSIX_IRQ_50_PIO_0        (50U)
-#define RP1_PCIE_MSIX_IRQ_51_PIO_1        (51U)
-#define RP1_PCIE_MSIX_IRQ_52_ADC_FIFO     (52U)
-#define RP1_PCIE_MSIX_IRQ_53_PCIE_OUT     (53U)
-#define RP1_PCIE_MSIX_IRQ_54_SPI6         (54U)
-#define RP1_PCIE_MSIX_IRQ_55_SPI7         (55U)
-#define RP1_PCIE_MSIX_IRQ_56_SPI8         (56U)
-#define RP1_PCIE_MSIX_IRQ_57_PROC_MISC    (57U)
-#define RP1_PCIE_MSIX_IRQ_58_SYSCFG       (58U)
-#define RP1_PCIE_MSIX_IRQ_59_CLOCKS_DEFAULT (59U)
-#define RP1_PCIE_MSIX_IRQ_60_VBUSCTRL     (60U)
+/* ---- GIC distributor ---- */
+#define GICD_PADDR                      0x107fff9000ULL
+#define GICD_ICFGR                      0xc00U
 
+/* ---- RP1 ---- */
+#define RP1_VID_DID                     0x00011de4U
+#define RP1_NUM_IRQS                    64U
+#define RP1_MSIX_CFG_OFFSET             0x108000U           /* in BAR1 */
+#define RP1_MSIX_CFG_SIZE               0x1000U
+#define RP1_MSIX_CFG(irq)               (0x008U + ((irq) * 4U))
+#define RP1_REG_SET                     0x800U
+#define RP1_REG_CLR                     0xc00U
+#define  MSIX_CFG_ENABLE                (1U << 0)
+#define  MSIX_CFG_IACK                  (1U << 2)
+#define  MSIX_CFG_IACK_EN               (1U << 3)
+#define RP1_IRQ_USBHOST0                31U
+#define RP1_IRQ_USBHOST1                36U
 
-#define RPI_PCIE_MSIX_CFG(irq)            (0x08U + ((irq) * 0x04U))
-#define RPI_PCIE_MSIX_CFG_RW              (0x000U)
-#define RPI_PCIE_MSIX_CFG_SET             (0x800U)
-#define RPI_PCIE_MSIX_CFG_CLR             (0xc00U)
+/* ---- PCI configuration space ---- */
+#define PCI_COMMAND                     0x04U
+#define  PCI_COMMAND_MEMORY             0x0002U
+#define  PCI_COMMAND_MASTER             0x0004U
+#define  PCI_COMMAND_INTX_DISABLE       0x0400U
+#define PCI_BAR(n)                      (0x10U + ((n) * 4U))
+#define PCI_CAP_PTR                     0x34U
+#define PCI_CAP_ID_MSIX                 0x11U
+#define  MSIX_CTRL_ENABLE               (1U << 31)
+#define  MSIX_CTRL_MASKALL              (1U << 30)
 
-/* GIC Interrupt Configuration Registers */
-#define GICD_PADDR                        (0x107fff9000UL)
-#define GICD_ICFGR                        (0xc00U)
-#define RP1_PCIE_MSI_GIC_IRQ_BASE         (0xa0U)
+static int       verbose;
+static uintptr_t rc;            /* root complex registers */
+static uint32_t  rp1_cfg_index; /* EXT_CFG_INDEX value selecting the RP1 function */
 
-static int_t verbose = 0;
-static int_t end_loop = 0;
-static void gic_set_msi_irq_edge(const uint_t irq)
+#define vprint(lvl, ...)  do { if (verbose >= (lvl)) { (void)fprintf(stderr, __VA_ARGS__); } } while (0)
+
+static uintptr_t map_dev(const uint64_t paddr, const size_t size, const char * const what)
 {
-    static uintptr_t gicd_icfg_base;
-    const uint32_t conf_mask = 0x2U << (((irq + RP1_PCIE_MSI_GIC_IRQ_BASE) % 16U) * 2U);
-    const uint32_t conf_off = ((irq + RP1_PCIE_MSI_GIC_IRQ_BASE) / 16U) * 4U;
-    uint32_t val, oldval;
-    if (irq > RP1_PCIE_MSIX_IRQ_SIZE) {
-        (void)fprintf(stderr, "Invalid MSIX irq: %u\n", irq);
-        return;
+    void * const p = mmap_device_memory(NULL, size, PROT_NOCACHE | PROT_READ | PROT_WRITE, 0, paddr);
+    if (p == MAP_FAILED) {
+        (void)fprintf(stderr, "msix-rp1: cannot map %s at 0x%llx: %s\n", what, (unsigned long long)paddr, strerror(errno));
+        exit(EXIT_FAILURE);
     }
-
-    gicd_icfg_base = (uintptr_t) mmap_device_memory(NULL,
-            (RP1_PCIE_MSIX_IRQ_SIZE * sizeof(uint32_t)),
-            PROT_NOCACHE|PROT_READ|PROT_WRITE,
-            0,
-            (GICD_PADDR + GICD_ICFGR));
-    if (gicd_icfg_base == (uintptr_t) MAP_FAILED) {
-        (void)fprintf(stderr, "mmap GICD interrupt configuration failed: %s\n", strerror (errno));
-        return;
-    }
-
-    oldval = in32(gicd_icfg_base + conf_off);
-    val = oldval | conf_mask;
-    out32(gicd_icfg_base + conf_off, val);
-    if (verbose > 1) {
-        (void)fprintf(stderr, "write irq: %u offset: 0x%x from 0x%x to 0x%x\n", irq, conf_off, oldval, val);
-    }
-
-    (void)munmap_device_memory((void*)gicd_icfg_base, RP1_PCIE_MSIX_IRQ_SIZE * sizeof(uint32_t));
+    return (uintptr_t)p;
 }
 
-static void rp1_pcie_msix_cfg(const uint_t irq, const uint_t enable)
+static uint32_t rp1_cfg_rd(const uint32_t reg)
 {
-    static uintptr_t rp1_pcie_base;
+    out32(rc + RC_EXT_CFG_INDEX, rp1_cfg_index);
+    return in32(rc + RC_EXT_CFG_DATA + (reg & 0xffcU));
+}
 
-    if (irq > RP1_PCIE_MSIX_IRQ_SIZE) {
-        (void)fprintf(stderr, "Invalid MSIX irq: %u\n", irq);
-        return;
+static void rp1_cfg_wr(const uint32_t reg, const uint32_t val)
+{
+    out32(rc + RC_EXT_CFG_INDEX, rp1_cfg_index);
+    out32(rc + RC_EXT_CFG_DATA + (reg & 0xffcU), val);
+}
+
+/* Inbound window n (1..10) register offsets */
+static uint32_t ibar_cfg_lo(const unsigned n)
+{
+    return (n <= 3U) ? (0x402cU + ((n - 1U) * 8U)) : (0x40d4U + ((n - 4U) * 8U));
+}
+
+static uint32_t ibar_remap_lo(const unsigned n)
+{
+    return (n <= 3U) ? (0x40acU + ((n - 1U) * 8U)) : (0x410cU + ((n - 4U) * 8U));
+}
+
+static uint64_t ibar_size(const uint32_t cfg_lo)
+{
+    const uint32_t enc = cfg_lo & 0x1fU;
+
+    if (enc == 0U) {
+        return 0;
     }
-
-    rp1_pcie_base = (uintptr_t) mmap_device_memory(NULL, RP1_PCIE_MSIX_SIZE, PROT_NOCACHE|PROT_READ|PROT_WRITE, 0, RP1_PCIE_MSIX_ADDR);
-    if (rp1_pcie_base == (uintptr_t) MAP_FAILED) {
-        (void)fprintf(stderr, "mmap (RP1 PCIE) failed: %s\n", strerror (errno));
-        return;
+    if (enc >= 0x1cU) {
+        return 1ULL << (enc - 0x1cU + 12U);     /* 4K .. 32K */
     }
+    return 1ULL << (enc + 15U);                 /* 64K .. */
+}
 
-    if (enable) {
-        switch (irq) {
-            case RP1_PCIE_MSIX_IRQ_6_ETH:       /* RP1 ethernet irq */
-            case RP1_PCIE_MSIX_IRQ_8_I2C1:      /* RP1 I2C1 irq */
-            case RP1_PCIE_MSIX_IRQ_13_I2C6:     /* RP1 I2C6 irq */
-            case RP1_PCIE_MSIX_IRQ_19_SPI0:     /* RP1 SPI0 irq */
-            case RP1_PCIE_MSIX_IRQ_25_UART0:    /* RP1 UART0 irq */
-            case RP1_PCIE_MSIX_IRQ_42_UART1:    /* RP1 UART1 irq */
-            case RP1_PCIE_MSIX_IRQ_43_UART2:    /* RP1 UART2 irq */
-            case RP1_PCIE_MSIX_IRQ_44_UART3:    /* RP1 UART3 irq */
-            case RP1_PCIE_MSIX_IRQ_45_UART4:    /* RP1 UART4 irq */
-            case RP1_PCIE_MSIX_IRQ_46_UART5:    /* RP1 UART5 irq */
-            case RP1_PCIE_MSIX_IRQ_47_MIPI0:    /* RP1 MIPI0 irq */
-            case RP1_PCIE_MSIX_IRQ_48_MIPI1:    /* RP1 MIPI1 irq */
-                out32(rp1_pcie_base + RPI_PCIE_MSIX_CFG_SET + RPI_PCIE_MSIX_CFG(irq), 0x9);
-                break;
+struct ibar {
+    uint64_t pci;
+    uint64_t cpu;
+    uint64_t size;
+    int      enabled;
+};
 
-            case RP1_PCIE_MSIX_IRQ_31_USB2:     /* RP1 USB2.0 irq */
-                out32(rp1_pcie_base + RPI_PCIE_MSIX_CFG_SET + RPI_PCIE_MSIX_CFG(irq), 0x1);
-                break;
+static void ibar_read(const unsigned n, struct ibar * const w)
+{
+    const uint32_t lo = in32(rc + ibar_cfg_lo(n));
+    const uint32_t hi = in32(rc + ibar_cfg_lo(n) + 4U);
+    const uint32_t rlo = in32(rc + ibar_remap_lo(n));
+    const uint32_t rhi = in32(rc + ibar_remap_lo(n) + 4U);
 
-            case RP1_PCIE_MSIX_IRQ_36_USB3:     /* RP1 USB3.0 irq */
-                out32(rp1_pcie_base + RPI_PCIE_MSIX_CFG_SET + RPI_PCIE_MSIX_CFG(irq), 0x1);
-                break;
+    w->size = ibar_size(lo);
+    w->pci = ((uint64_t)hi << 32) | (lo & ~0x1fU);
+    w->cpu = ((uint64_t)(rhi & 0xffU) << 32) | (rlo & ~0xfffU);
+    w->enabled = ((rlo & RC_BAR_ENABLE_REMAP) != 0U) && (w->size != 0U);
+}
 
-            default:
-                (void)fprintf(stderr, "MSIX irq: %u not supported yet\n", irq);
-                break;
+/*
+ * Find the PCI address at which RP1 sees host RAM (CPU physical address 0).
+ * This is the value to pass to io-usb-otg as "bmstr=".
+ */
+static int find_ram_window(uint64_t * const pci_base)
+{
+    unsigned n;
+
+    for (n = 1; n <= RC_NUM_INBOUND_WINS; n++) {
+        struct ibar w;
+        ibar_read(n, &w);
+        if (w.enabled && (w.cpu == 0U) && (w.size >= 0x40000000ULL)) {
+            *pci_base = w.pci;
+            return 0;
         }
     }
-    else {
-        switch (irq) {
-            case RP1_PCIE_MSIX_IRQ_6_ETH:       /* RP1 ethernet irq */
-            case RP1_PCIE_MSIX_IRQ_8_I2C1:      /* RP1 I2C1 irq */
-            case RP1_PCIE_MSIX_IRQ_13_I2C6:     /* RP1 I2C6 irq */
-            case RP1_PCIE_MSIX_IRQ_19_SPI0:     /* RP1 SPI0 irq */
-            case RP1_PCIE_MSIX_IRQ_25_UART0:    /* RP1 UART0 irq */
-            case RP1_PCIE_MSIX_IRQ_42_UART1:    /* RP1 UART1 irq */
-            case RP1_PCIE_MSIX_IRQ_43_UART2:    /* RP1 UART2 irq */
-            case RP1_PCIE_MSIX_IRQ_44_UART3:    /* RP1 UART3 irq */
-            case RP1_PCIE_MSIX_IRQ_45_UART4:    /* RP1 UART4 irq */
-            case RP1_PCIE_MSIX_IRQ_46_UART5:    /* RP1 UART5 irq */
-            case RP1_PCIE_MSIX_IRQ_47_MIPI0:    /* RP1 MIPI0 irq */
-            case RP1_PCIE_MSIX_IRQ_48_MIPI1:    /* RP1 MIPI1 irq */
-                out32(rp1_pcie_base + RPI_PCIE_MSIX_CFG(irq), 0x0);
-                break;
+    return -1;
+}
 
-            case RP1_PCIE_MSIX_IRQ_31_USB2:     /* RP1 USB2.0 irq */
-                out32(rp1_pcie_base + RPI_PCIE_MSIX_CFG_SET + RPI_PCIE_MSIX_CFG(irq), 0x1);
-                break;
+/* Make sure a device write to the MSI doorbell address reaches the MIP */
+static int setup_mip_window(void)
+{
+    unsigned n, free_win = 0;
 
-            case RP1_PCIE_MSIX_IRQ_36_USB3:     /* RP1 USB3.0 irq */
-                out32(rp1_pcie_base + RPI_PCIE_MSIX_CFG_SET + RPI_PCIE_MSIX_CFG(irq), 0x1);
-                break;
-
-            default:
-                (void)fprintf(stderr, "MSIX irq: %u not supported yet\n", irq);
-                break;
+    for (n = 1; n <= RC_NUM_INBOUND_WINS; n++) {
+        struct ibar w;
+        ibar_read(n, &w);
+        vprint(2, "  inbound win %u: pci 0x%llx -> cpu 0x%llx size 0x%llx %s\n", n, (unsigned long long)w.pci,
+               (unsigned long long)w.cpu, (unsigned long long)w.size, w.enabled ? "" : "(off)");
+        if (w.enabled && (w.pci == MIP_MSI_PCI_ADDR) && (w.cpu == MIP_PADDR)) {
+            vprint(1, "MIP doorbell window already present (inbound win %u)\n", n);
+            return 0;
+        }
+        if ((free_win == 0U) && (w.size == 0U)) {
+            free_win = n;
         }
     }
 
-    (void)munmap_device_memory((void*)rp1_pcie_base, RP1_PCIE_MSIX_SIZE);
-}
-
-static void bcm2712_mip_intc_cfg(void)
-{
-    static uintptr_t mip_intc_base;
-
-    mip_intc_base = (uintptr_t) mmap_device_memory(NULL, BCM2712_MIP_INT_CONTROLLER_SIZE, PROT_NOCACHE|PROT_READ|PROT_WRITE, 0, BCM2712_MIP_INT_CONTROLLER_ADDR);
-    if (mip_intc_base == (uintptr_t) MAP_FAILED) {
-        (void)fprintf(stderr, "mmap (MIP INTC) failed: %s\n", strerror (errno));
-        return;
+    if (free_win == 0U) {
+        (void)fprintf(stderr, "msix-rp1: no free PCIe inbound window for the MIP doorbell\n");
+        return -1;
     }
 
-    out32(mip_intc_base + MIP_INT_MASKL_HOST, 0U);
-    out32(mip_intc_base + MIP_INT_MASKH_HOST, 0U);
-    out32(mip_intc_base + MIP_INT_MASKL_VPU, 0xffffffffU);
-    out32(mip_intc_base + MIP_INT_MASKH_VPU, 0xffffffffU);
-    out32(mip_intc_base + MIP_INT_CFGL_HOST, 0x82000040U);
-    out32(mip_intc_base + MIP_INT_CFGH_HOST, 0x0001fc10U);
-
-    (void)munmap_device_memory((void*)mip_intc_base, BCM2712_MIP_INT_CONTROLLER_SIZE);
+    /* 4K window: size encoding 0x1c */
+    out32(rc + ibar_cfg_lo(free_win), (uint32_t)(MIP_MSI_PCI_ADDR & 0xfffff000U) | 0x1cU);
+    out32(rc + ibar_cfg_lo(free_win) + 4U, (uint32_t)(MIP_MSI_PCI_ADDR >> 32));
+    out32(rc + ibar_remap_lo(free_win), (uint32_t)(MIP_PADDR & 0xfffff000U) | RC_BAR_ENABLE_REMAP);
+    out32(rc + ibar_remap_lo(free_win) + 4U, (uint32_t)(MIP_PADDR >> 32));
+    vprint(1, "MIP doorbell mapped through inbound win %u\n", free_win);
+    return 0;
 }
 
-int main(const int argc, char *const argv[])
+/*
+ * Fallback for firmware that left no inbound RAM window: let RP1 reach all of
+ * host RAM at PCI address 0x10_0000_0000 (64 GB), the layout Linux uses.
+ */
+static int setup_ram_window(void)
 {
-    int opt, status = EXIT_SUCCESS;
-    pci_err_t ret;
-    pci_cap_t cap;
-    const pci_bdf_t bdf = PCI_BDF(1, 0, 0);  /* Use 1:0:0 to access devices in PCIe RP1 */
-    int_t idx;
-    const uint8_t capid = CAPID_MSIX;
-    uint_t cleanup = 0;
-    uint_t irq_list[RP1_PCIE_MSIX_IRQ_SIZE] = { [0] = 6, [1] = 31, [2] = 36 };
-    uint_t irq_num = 3;
+    unsigned n;
 
-    while((opt = getopt(argc, argv, "ci:v")) != -1) {
-        switch(opt) {
+    for (n = 1; n <= RC_NUM_INBOUND_WINS; n++) {
+        struct ibar w;
+        ibar_read(n, &w);
+        if (w.size == 0U) {
+            out32(rc + ibar_cfg_lo(n), 0x15U);                          /* 64 GB */
+            out32(rc + ibar_cfg_lo(n) + 4U, (uint32_t)(RAM_PCI_ADDR >> 32));
+            out32(rc + ibar_remap_lo(n), RC_BAR_ENABLE_REMAP);
+            out32(rc + ibar_remap_lo(n) + 4U, 0U);
+            vprint(1, "RAM mapped at PCI 0x%llx through inbound win %u\n", (unsigned long long)RAM_PCI_ADDR, n);
+            return 0;
+        }
+    }
+    return -1;
+}
+
+static void setup_mip(void)
+{
+    const uintptr_t mip = map_dev(MIP_PADDR, MIP_SIZE, "MIP");
+
+    /* All vectors: unmasked for the host, masked for the VPU, edge triggered */
+    out32(mip + MIP_INT_MASKL_HOST, 0U);
+    out32(mip + MIP_INT_MASKH_HOST, 0U);
+    out32(mip + MIP_INT_MASKL_VPU, 0xffffffffU);
+    out32(mip + MIP_INT_MASKH_VPU, 0xffffffffU);
+    out32(mip + MIP_INT_CFGL_HOST, 0xffffffffU);
+    out32(mip + MIP_INT_CFGH_HOST, 0xffffffffU);
+    (void)munmap_device_memory((void *)mip, MIP_SIZE);
+}
+
+static void gic_set_edge(const unsigned rp1_irq)
+{
+    const unsigned intid = MIP_GIC_IRQ_BASE + rp1_irq;
+    const uintptr_t icfgr = map_dev(GICD_PADDR + GICD_ICFGR, 0x100U, "GICD_ICFGR");
+    const uint32_t off = (intid / 16U) * 4U;
+
+    out32(icfgr + off, in32(icfgr + off) | (0x2U << ((intid % 16U) * 2U)));
+    (void)munmap_device_memory((void *)icfgr, 0x100U);
+}
+
+static int find_msix_cap(void)
+{
+    uint32_t ptr = rp1_cfg_rd(PCI_CAP_PTR) & 0xfcU;
+    int guard = 48;
+
+    while ((ptr != 0U) && (guard-- > 0)) {
+        const uint32_t hdr = rp1_cfg_rd(ptr);
+        if ((hdr & 0xffU) == PCI_CAP_ID_MSIX) {
+            return (int)ptr;
+        }
+        ptr = (hdr >> 8) & 0xfcU;
+    }
+    return -1;
+}
+
+static void usage(void)
+{
+    (void)fprintf(stderr,
+        "msix-rp1 [-v] [-i irq[,irq...]]   configure RP1 MSI-X interrupts\n"
+        "msix-rp1 -B                       print the bus-master (DMA) offset for bmstr=\n"
+        "msix-rp1 -c                       disable RP1 MSI-X\n");
+}
+
+int main(const int argc, char * const argv[])
+{
+    unsigned irq_list[RP1_NUM_IRQS] = { 6, RP1_IRQ_USBHOST0, RP1_IRQ_USBHOST1 };
+    unsigned irq_num = 3;
+    int opt, cleanup = 0, query_bmstr = 0;
+
+    while ((opt = getopt(argc, argv, "Bci:v")) != -1) {
+        switch (opt) {
+            case 'B':
+                query_bmstr = 1;
+                break;
             case 'c':
                 cleanup = 1;
                 break;
-            case 'i':
-                {
-                    const char *str = optarg;
-                    char *token;
-                    irq_num = 0;
-                    while (str != NULL) {
-                        errno = EOK;
-                        irq_list[irq_num] = (uint_t) strtoul(str, NULL, 0);
-                        if (errno == EOK) {
-                            if (irq_list[irq_num] >= RP1_PCIE_MSIX_IRQ_SIZE) {
-                                (void)fprintf(stderr, "Invalid IRQ: %u, make sure IRQ is between 0 ~ %u\n", irq_list[irq_num], RP1_PCIE_MSIX_IRQ_SIZE-1U);
-                                exit (EXIT_FAILURE);
-                            }
-                        }
-                        else {
-                            (void)fprintf(stderr, "Invalid IRQ entered, make sure IRQ is between 0 ~ %u\n", RP1_PCIE_MSIX_IRQ_SIZE-1U);
-                            exit (EXIT_FAILURE);
-                        }
-                        token = strchr(str, ',');
-                        if (token != NULL) {
-                            *token++ = '\0';
-                        }
-                        str = token;
-                        irq_num++;
+            case 'i': {
+                char *str = optarg;
+                irq_num = 0;
+                while ((str != NULL) && (*str != '\0') && (irq_num < RP1_NUM_IRQS)) {
+                    char *end;
+                    const unsigned long v = strtoul(str, &end, 0);
+                    if ((end == str) || (v >= RP1_NUM_IRQS)) {
+                        (void)fprintf(stderr, "msix-rp1: invalid IRQ '%s', must be 0..%u\n", str, RP1_NUM_IRQS - 1U);
+                        return EXIT_FAILURE;
                     }
+                    irq_list[irq_num++] = (unsigned)v;
+                    str = (*end == ',') ? (end + 1) : NULL;
                 }
                 break;
+            }
             case 'v':
                 ++verbose;
                 break;
             default:
-                break;
+                usage();
+                return EXIT_FAILURE;
         }
     }
 
-    idx = pci_device_find_capid(bdf, capid);
-    if (idx < 0) {
-        (void)fprintf(stderr, "Cannot find capid %x for B%.2u:D%.2u:F%.2u\n", capid, PCI_BUS(bdf), PCI_DEV(bdf), PCI_FUNC(bdf));
-        status = EXIT_FAILURE;
-    }
-    else {
-        cap = NULL;
-        ret = pci_device_read_cap(bdf, &cap, (uint_t)idx);
+    rc = map_dev(RC_PADDR, RC_SIZE, "PCIe2 root complex");
 
-        if (ret != PCI_ERR_OK) {
-            (void)fprintf(stderr, "Could not get capability for B%.2u:D%.2u:F%.2u\n", PCI_BUS(bdf), PCI_DEV(bdf), PCI_FUNC(bdf));
-            status = EXIT_FAILURE;
+    if (query_bmstr) {
+        uint64_t base;
+        if (find_ram_window(&base) != 0) {
+            (void)fprintf(stderr, "msix-rp1: no PCIe inbound RAM window found, assuming default\n");
+            base = RAM_PCI_ADDR;
+        }
+        (void)printf("0x%llx\n", (unsigned long long)base);
+        return EXIT_SUCCESS;
+    }
+
+    /* A config access to the secondary bus without a link aborts the CPU: check first */
+    const uint32_t status = in32(rc + RC_PCIE_STATUS);
+    if ((status & (RC_PCIE_STATUS_DL_ACTIVE | RC_PCIE_STATUS_PHYLINKUP)) !=
+        (RC_PCIE_STATUS_DL_ACTIVE | RC_PCIE_STATUS_PHYLINKUP)) {
+        (void)fprintf(stderr, "msix-rp1: PCIe link to RP1 is down (status 0x%x).\n"
+                              "          Is 'pciex4_reset=0' set in config.txt?\n", status);
+        return EXIT_FAILURE;
+    }
+
+    const uint32_t buses = in32(rc + RC_CFG_BUSES);
+    const unsigned sec_bus = (buses >> 8) & 0xffU;
+    if (sec_bus == 0U) {
+        (void)fprintf(stderr, "msix-rp1: root bridge has no secondary bus assigned (0x%x), firmware did not set up RP1\n", buses);
+        return EXIT_FAILURE;
+    }
+    rp1_cfg_index = sec_bus << 20;      /* bus:0.0 */
+
+    const uint32_t id = rp1_cfg_rd(0);
+    if (id != RP1_VID_DID) {
+        (void)fprintf(stderr, "msix-rp1: unexpected device %04x:%04x on bus %u (expected RP1 1de4:0001)\n",
+                      id & 0xffffU, id >> 16, sec_bus);
+        return EXIT_FAILURE;
+    }
+
+    /* CPU address of PCI memory address 0 (outbound window 0) */
+    const uint32_t win_bl = in32(rc + RC_MEM_WIN0_BASE_LIMIT);
+    const uint64_t win_cpu = ((uint64_t)(in32(rc + RC_MEM_WIN0_BASE_HI) & 0xffU) << 32) |
+                             ((uint64_t)((win_bl & 0xfff0U) >> 4) << 20);
+    const uint64_t win_pci = ((uint64_t)in32(rc + RC_CPU_2_PCIE_MEM_WIN0_HI) << 32) |
+                             in32(rc + RC_CPU_2_PCIE_MEM_WIN0_LO);
+    const uint32_t bar0 = rp1_cfg_rd(PCI_BAR(0)) & ~0xfU;
+    const uint32_t bar1 = rp1_cfg_rd(PCI_BAR(1)) & ~0xfU;
+    uint32_t cmd = rp1_cfg_rd(PCI_COMMAND);
+
+    vprint(1, "RP1 on bus %u: cmd 0x%04x BAR0 0x%08x BAR1 0x%08x BAR2 0x%08x\n", sec_bus, cmd & 0xffffU,
+           bar0, bar1, rp1_cfg_rd(PCI_BAR(2)) & ~0xfU);
+    vprint(1, "outbound win0: cpu 0x%llx -> pci 0x%llx, bridge mem base/limit 0x%08x\n",
+           (unsigned long long)win_cpu, (unsigned long long)win_pci, in32(rc + RC_CFG_MEM_BASE_LIMIT));
+
+    if ((win_cpu == 0U) || (bar0 < win_pci) || (bar1 < win_pci)) {
+        (void)fprintf(stderr, "msix-rp1: PCIe outbound window is not set up (cpu 0x%llx pci 0x%llx)\n",
+                      (unsigned long long)win_cpu, (unsigned long long)win_pci);
+        return EXIT_FAILURE;
+    }
+    if (bar0 == bar1) {
+        /*
+         * The MSI-X table BAR has not been given an address of its own. Assigning
+         * one would mean re-doing the firmware's bus configuration, which this
+         * utility deliberately does not do.
+         */
+        (void)fprintf(stderr, "msix-rp1: RP1 BAR0 (MSI-X table) is not assigned by the firmware (BAR0 = BAR1 = 0x%x)\n", bar0);
+        return EXIT_FAILURE;
+    }
+
+    const uint64_t bar0_cpu = win_cpu + (bar0 - win_pci);
+    const uint64_t bar1_cpu = win_cpu + (bar1 - win_pci);
+
+    const int cap = find_msix_cap();
+    if (cap < 0) {
+        (void)fprintf(stderr, "msix-rp1: RP1 has no MSI-X capability\n");
+        return EXIT_FAILURE;
+    }
+    uint32_t ctrl = rp1_cfg_rd((uint32_t)cap);
+    const unsigned nvec = ((ctrl >> 16) & 0x7ffU) + 1U;
+    const uint32_t tbl = rp1_cfg_rd((uint32_t)cap + 4U);
+    if ((tbl & 0x7U) != 0U) {
+        (void)fprintf(stderr, "msix-rp1: MSI-X table is in BAR%u, expected BAR0\n", tbl & 0x7U);
+        return EXIT_FAILURE;
+    }
+    const size_t tbl_size = (size_t)nvec * 16U;
+    const uintptr_t table = map_dev(bar0_cpu + (tbl & ~0x7U), tbl_size, "RP1 MSI-X table");
+    const uintptr_t msix_cfg = map_dev(bar1_cpu + RP1_MSIX_CFG_OFFSET, RP1_MSIX_CFG_SIZE, "RP1 MSIX_CFG");
+    unsigned i;
+
+    if (cleanup) {
+        for (i = 0; i < nvec; i++) {
+            out32(msix_cfg + RP1_REG_CLR + RP1_MSIX_CFG(i), MSIX_CFG_ENABLE);
+            out32(table + (i * 16U) + 12U, 1U);
+        }
+        rp1_cfg_wr((uint32_t)cap, (ctrl & ~MSIX_CTRL_ENABLE) | MSIX_CTRL_MASKALL);
+        (void)fprintf(stderr, "RP1 MSI-X disabled\n");
+        return EXIT_SUCCESS;
+    }
+
+    (void)fprintf(stderr, "RP1 supports %u MSI-X IRQs, setting up %u\n", nvec, irq_num);
+
+    /* MSI-X messages are memory writes from RP1: it must be a bus master */
+    cmd = (cmd & 0xffffU) | PCI_COMMAND_MEMORY | PCI_COMMAND_MASTER | PCI_COMMAND_INTX_DISABLE;
+    rp1_cfg_wr(PCI_COMMAND, cmd);
+    out32(rc + RC_CFG_COMMAND, (in32(rc + RC_CFG_COMMAND) & 0xffffU) | PCI_COMMAND_MEMORY | PCI_COMMAND_MASTER);
+
+    if (setup_mip_window() != 0) {
+        return EXIT_FAILURE;
+    }
+    setup_mip();
+
+    /* Quiesce while the table is rewritten */
+    rp1_cfg_wr((uint32_t)cap, ctrl | MSIX_CTRL_ENABLE | MSIX_CTRL_MASKALL);
+
+    /* Vector n -> doorbell write of <n> -> GIC interrupt 160 + n. Everything masked by default */
+    for (i = 0; i < nvec; i++) {
+        out32(table + (i * 16U) + 0U, (uint32_t)MIP_MSI_PCI_ADDR);
+        out32(table + (i * 16U) + 4U, (uint32_t)(MIP_MSI_PCI_ADDR >> 32));
+        out32(table + (i * 16U) + 8U, i);
+        out32(table + (i * 16U) + 12U, 1U);
+    }
+
+    for (i = 0; i < irq_num; i++) {
+        const unsigned irq = irq_list[i];
+        if (irq >= nvec) {
+            (void)fprintf(stderr, "msix-rp1: IRQ %u is beyond the %u vectors of RP1, skipped\n", irq, nvec);
+            continue;
+        }
+        gic_set_edge(irq);
+        out32(table + (irq * 16U) + 12U, 0U);
+
+        if ((irq == RP1_IRQ_USBHOST0) || (irq == RP1_IRQ_USBHOST1)) {
+            /* edge source: one message per event, no acknowledge */
+            out32(msix_cfg + RP1_REG_CLR + RP1_MSIX_CFG(irq), MSIX_CFG_IACK_EN);
+            out32(msix_cfg + RP1_REG_SET + RP1_MSIX_CFG(irq), MSIX_CFG_ENABLE);
         }
         else {
-            const uint_t irq_total = cap_msix_get_nirq(cap);
-            if (irq_num > irq_total) {
-                (void)fprintf(stderr, "RP1 support %u MSI-X IRQs, please specify less IRQs to use\n", irq_total);
-                status = EXIT_FAILURE;
-            }
-            else {
-                (void)fprintf(stderr, "RP1 support %u MSI-X IRQs, setup %u IRQs\n", irq_total, irq_num);
-
-                const pci_devhdl_t hdl = pci_device_attach(bdf, pci_attachFlags_DEFAULT, NULL);
-                if (hdl == NULL) {
-                    (void)fprintf(stderr, "Attach failed\n");
-                }
-                else {
-                    uint_t i;
-                    const bool_t enabled = pci_device_cfg_cap_isenabled(hdl, cap);
-                    if (verbose > 0) {
-                        (void)fprintf(stderr, "Capability 0x%x is currently %s\n", capid, enabled ? "enabled" : "disabled");
-                    }
-
-                    if (cleanup > 0U) {
-
-                        ret = cap_msix_mask_irq_all(hdl, cap);
-                        (void)fprintf(stderr, "cap_msix_mask_irq_all from returns %s\n", pci_strerror(ret));
-
-                        for (i=0; i<irq_total; i++) {
-                            ret = cap_msix_set_irq_entry(hdl, cap, i, -1 );
-                            if (ret == PCI_ERR_OK ) {
-                                if (verbose > 0) {
-                                    (void)fprintf(stderr, "interrupt resource %u is disabled\n", i);
-                                }
-                            }
-                            else {
-                                (void)fprintf(stderr, "disable interrupt resource %u failed: %s\n", i, pci_strerror(ret));
-                            }
-                        }
-
-                        (void)fprintf(stderr, "Disabling capid 0x%x\n", capid);
-                        ret = pci_device_cfg_cap_disable(hdl, pci_reqType_e_MANDATORY, cap);
-                        if (ret != PCI_ERR_OK) {
-                            (void)fprintf(stderr, "cap disable failed, %s\n", pci_strerror(ret));
-                        }
-
-                        ret = pci_device_detach(hdl);
-                        if (ret != PCI_ERR_OK) {
-                            (void)fprintf(stderr, "pci_device_detach failed, %s\n", pci_strerror(ret));
-                            status = EXIT_FAILURE;
-                        }
-                    }
-                    else {
-                        ret = cap_msix_mask_irq_all(hdl, cap);
-                        if (ret != PCI_ERR_OK) {
-                            (void)fprintf(stderr, "Failed to mask all IRQs, %s\n", pci_strerror(ret));
-                        }
-                        else {
-                            if (verbose > 0) {
-                                (void)fprintf(stderr, "Mask all IRQs\n");
-                            }
-                        }
-
-                        for (i=0; i<irq_total; i++) {
-                            ret = cap_msix_set_irq_entry(hdl, cap, i, (int_t)i);
-                            if (ret == PCI_ERR_OK ) {
-                                if (verbose > 1) {
-                                    (void)fprintf(stderr, "set interrupt resource %u not to be shared\n", i);
-                                }
-                            }
-                            else {
-                                (void)fprintf(stderr, "set interrupt resource %u not to be shared failed: %s\n", i, pci_strerror(ret));
-                            }
-
-                            if ((i == RP1_PCIE_MSIX_IRQ_31_USB2) ||
-                                (i == RP1_PCIE_MSIX_IRQ_36_USB3) ||
-                                (i == RP1_PCIE_MSIX_IRQ_6_ETH) ||
-                                (i == RP1_PCIE_MSIX_IRQ_25_UART0) ||
-                                (i == RP1_PCIE_MSIX_IRQ_42_UART1) ||
-                                (i == RP1_PCIE_MSIX_IRQ_43_UART2) ||
-                                (i == RP1_PCIE_MSIX_IRQ_44_UART3) ||
-                                (i == RP1_PCIE_MSIX_IRQ_45_UART4) ||
-                                (i == RP1_PCIE_MSIX_IRQ_46_UART5) ||
-                                (i == RP1_PCIE_MSIX_IRQ_47_MIPI0) ||
-                                (i == RP1_PCIE_MSIX_IRQ_48_MIPI1)) {
-                                /* set  edge triggered GIC MSIX interrupts */
-                                gic_set_msi_irq_edge(i);
-                            }
-                        }
-
-                        ret = cap_msix_set_nirq(hdl, cap, irq_total);
-                        if (ret != PCI_ERR_OK) {
-                            (void)fprintf(stderr, "Failed set number of IRQ to %u, %s\n", irq_total, pci_strerror(ret));
-                        }
-                        else {
-                            if (verbose > 0) {
-                                (void)fprintf(stderr, "Set number of MSIX irq: %u\n", irq_total);
-                            }
-                        }
-
-                        ret = pci_device_cfg_cap_enable(hdl, pci_reqType_e_MANDATORY, cap);
-                        if (ret != PCI_ERR_OK) {
-                            (void)fprintf(stderr, "Failed to enable capid 0x%x, %s\n", capid, pci_strerror(ret));
-                        }
-                        else {
-                            if (verbose > 0) {
-                                (void)fprintf(stderr, "enabled capid 0x%x\n", capid);
-                            }
-                        }
-                        for (i=0; i<irq_num; i++) {
-                            ret = cap_msix_unmask_irq_entry (hdl, cap, irq_list[i]);
-                            if (ret != PCI_ERR_OK) {
-                                (void)fprintf(stderr, "cap_msix_unmask_irq_entry %u from returns %s\n", irq_list[i], pci_strerror(ret));
-                            }
-                            else {
-                                if (verbose > 0) {
-                                    (void)fprintf(stderr, "unmask IRQ: %u\n", irq_list[i]);
-                                }
-                            }
-                        }
-                        ret = cap_msix_unmask_irq_all(hdl, cap);
-                        if (ret != PCI_ERR_OK) {
-                            (void)fprintf(stderr, "Failed to unmask all IRQs, %s\n", pci_strerror(ret));
-                        }
-                        else {
-                            if (verbose > 0) {
-                                (void)fprintf(stderr, "Unmask all IRQs\n");
-                            }
-                        }
-
-                        if (verbose > 1) {
-                            pci_irq_t irq_alloc_list[RP1_PCIE_MSIX_IRQ_SIZE];
-                            int_t nirq;
-                            ret = pci_device_read_irq(hdl, &nirq, irq_alloc_list);
-                            if (ret != PCI_ERR_OK) {
-                                (void)fprintf(stderr, "Unable to determine IRQ list, %s\n", pci_strerror(ret));
-                            }
-                            else {
-                                if (nirq < 0) {
-                                    (void)fprintf(stderr, "%u IRQ(s) could not be returned, irq_list too small\n", -nirq);
-                                    nirq = (int_t) NELEMENTS(irq_alloc_list);    // display the ones we did receive
-                                }
-                                (void)fprintf(stderr, "%u Assigned IRQ's:  ", nirq);
-                                for (i=0; i<(uint_t)nirq; i++) {
-                                    if ((i % 8) == 0U) {
-                                        (void)fprintf(stderr, "\n\t%.2u [0x%x] ", i, irq_alloc_list[i]);
-                                    }
-                                    else {
-                                        (void)fprintf(stderr, "[0x%x] ", irq_alloc_list[i]);
-                                    }
-                                }
-                                (void)fprintf(stderr, "\n");
-                            }
-                        }
-
-                        for (i=0; i<irq_num; i++) {
-                            /* enable MSIX irq */
-                            rp1_pcie_msix_cfg(irq_list[i], 1);
-                        }
-
-                        /* config MIP_controller */
-                        bcm2712_mip_intc_cfg();
-
-                        while (end_loop == 0) {
-                            (void)sleep(1);
-                        }
-                    }
-                }
-            }
+            /*
+             * level source: RP1 sends one message and then waits for the driver to
+             * write MSIX_CFG.IACK once it has serviced the device (devc-serpl011
+             * does this for the RP1 UARTs).
+             */
+            out32(msix_cfg + RP1_REG_SET + RP1_MSIX_CFG(irq), MSIX_CFG_ENABLE | MSIX_CFG_IACK_EN);
+            out32(msix_cfg + RP1_REG_SET + RP1_MSIX_CFG(irq), MSIX_CFG_IACK);
         }
+        vprint(1, "RP1 irq %u -> GIC irq %u, MSIX_CFG 0x%x\n", irq, MIP_GIC_IRQ_BASE + irq,
+               in32(msix_cfg + RP1_MSIX_CFG(irq)));
     }
-    return status;
+
+    ctrl = rp1_cfg_rd((uint32_t)cap);
+    rp1_cfg_wr((uint32_t)cap, (ctrl | MSIX_CTRL_ENABLE) & ~MSIX_CTRL_MASKALL);
+
+    uint64_t ram_pci;
+    if (find_ram_window(&ram_pci) != 0) {
+        if (setup_ram_window() != 0) {
+            (void)fprintf(stderr, "msix-rp1: warning: no PCIe inbound RAM window, RP1 DMA (USB) will not work\n");
+        }
+        ram_pci = RAM_PCI_ADDR;
+    }
+    if ((ram_pci != RAM_PCI_ADDR) || (verbose > 0)) {
+        (void)fprintf(stderr, "RP1 DMA offset (io-usb-otg bmstr=) is 0x%llx\n", (unsigned long long)ram_pci);
+    }
+
+    return EXIT_SUCCESS;
 }

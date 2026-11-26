@@ -1,25 +1,4 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC:
  * Copyright 2007, 2008, QNX Software Systems.
  *
@@ -164,22 +143,6 @@
 	#define SD_LU_SET_PWD				0x01
 	#define SD_LU_PWD_SIZE				16		// max password size
 
-#define SD_READ_EXTR_SINGLE				48
-#define SD_WRITE_EXTR_SINGLE			49
-#define SD_READ_EXTR_MULTI				58
-#define SD_WRITE_EXTR_MULTI				59
-	#define SD_EXTR_SIZE				512
-	#define SD_EXTR_MIO( _t )			( (_t) & SD_EXTR_MIO_MSK )
-	#define SD_EXTR_IO					( 1 << 31 )
-	#define SD_EXTR_MEM					( 0 << 31 )
-	#define SD_EXTR_MIO_MSK				( 1 << 31 )
-	#define SD_EXTR_MW					( 1 << 26 )
-	#define SD_EXTR_MWM( _m )			( (_m) & SD_EXTR_MWM_MSK )
-	#define SD_EXTR_MWM_MSK				( 1 << 26 )
-	#define SD_EXTR_FNO( _f )			( ( (_f) & 0xf ) << 27 )
-	#define SD_EXTR_ADDR( _a )			( ( (_a) & 0x1ffff ) << 9 )
-	#define SD_EXTR_LEN_MSK( _l, _m )	( (_m) ? ( (_l) & 0xff ) : ( ( (_l) - 1 ) & 0x1ff ) )
-
 #define	SD_APP_CMD						55
 #define	SD_GEN_CMD						56
 #define	SD_READ_OCR						58
@@ -224,19 +187,10 @@ typedef struct _sd_cid_t {
 typedef struct _sd_scr_t {
 	_Uint8t		scr_structure;	// SCR structure
 
-// SD version is a combination of sd_spec, sd_spec3, sd_spec4 and sd_specx. See specification.
 #define SCR_SPEC_VER_0		0	// Version 1.0 - 1.01
 #define SCR_SPEC_VER_1		1	// Version 1.10
 #define SCR_SPEC_VER_2		2	// Version 2.0 or Version 3.0X
-
-#define SCR_SPEC3_VER_3		1	// Version 3
-
-#define SCR_SPEC4_VER_4		1	// Version 4
-
-#define SCR_SPECX_VER_5		1	// Version 5
-#define SCR_SPECX_VER_6		2	// Version 6
-#define SCR_SPECX_VER_7		3	// Version 7
-#define SCR_SPECX_VER_8		4	// Version 8
+#define SCR_SPEC_VER_3		3	// Version 40
 	_Uint8t		sd_spec;		// Physical layer specification
 	_Uint8t		data_stat_after_erase;
 	_Uint8t		sd_security;
@@ -245,11 +199,7 @@ typedef struct _sd_scr_t {
 #define SCR_BUS_WIDTH_4		(1 << 2)
 	_Uint8t		sd_bus_widths;
 	_Uint8t		sd_spec3;
-	_Uint8t		sd_spec4;
-	_Uint8t		sd_specx;
 	_Uint8t		ex_security;
-#define SCR_CMD58_59_SUP	(1 << 3)
-#define SCR_CMD48_49_SUP	(1 << 2)
 #define SCR_CMD23_SUP		(1 << 1)
 #define SCR_CMD20_SUP		(1 << 0)
 	_Uint8t		cmd_support;
@@ -262,9 +212,6 @@ typedef struct _sd_sds_t {		// SD Status
 	_Uint32t	uhs_au_size;
 	_Uint32t	erase_timeout;
 	_Uint32t	erase_offset;
-#define SD_PERF_CLASS_A2		2
-	_Uint32t	perf_class;
-	_Uint32t	perf_enh;
 } sd_sds_t;
 
 typedef struct _sd_switch_cap {
@@ -301,67 +248,10 @@ typedef struct _sd_switch_cap {
 	_Uint32t		curr_limit;
 } sd_switch_cap_t;
 
-#define SD_FCN_PG_SZ		512
+#endif
 
-typedef struct _sd_fcn_ext_hdr {
-	uint8_t		structure_revsion[2];
-	uint8_t		gen_info_length[2];
-	uint8_t		number_extensions;
-	uint8_t		rsvd[11];
-} sd_fcn_ext_hdr;
 
-typedef struct _sd_fcn_ext {
-#define SFC_PWR_MGNT		0x01
-#define SFC_PERF_ENH		0x02
-	uint16_t		sfc;		// Standard Function Code
-	uint16_t		fcc;		// Function Capability Code
-	uint16_t		fmc;		// Function Manufacturer Code
-	uint8_t			fmn[16];	// Function Manufacturer Name
-	uint16_t		pfc;		// Particular Function Code
-	uint8_t			fn[16];		// Function Name
-	uint16_t		pne;		// Pointer to Next Extension
-	uint8_t			nrs;		// Number of Register Sets
-	uint8_t			rsvd;
-#define SD_FCN_EXT_FNO( _rsa )			( ( (_rsa) >> 18 ) & 0xf )
-#define SD_FCN_EXT_SADDR( _rsa )		( (_rsa) & 0x1ffff )
-	uint32_t		rsa[1];		// Variable length Register Set Addresses
-} sd_fcn_ext;
-
-// Power Management Function Register definitions
-#define PWR_MGNT_REV					0		// Ronly
-	#define PWR_MGNT_REV_MSK			0xf
-#define PWR_MGNT_STATUS					1		// Ronly
-	#define PWR_MGNT_STATUS_PDMS		0x40	// Power down support
-	#define PWR_MGNT_STATUS_PSUS		0x20	// Power sustenance support
-	#define PWR_MGNT_STATUS_POFS		0x10	// Power off support
-	#define PWR_MGNT_STATUS_PDMR		0x04	// Power down mode ready
-	#define PWR_MGNT_STATUS_PSUR		0x02	// Power sustenance request
-	#define PWR_MGNT_STATUS_POFR		0x01	// Power off ready
-#define PWR_MGNT_SETTING				2		// R/W
-	#define PWR_MGNT_SETTING_PDMN		0x04	// Power down mode notification
-	#define PWR_MGNT_SETTING_PSUN		0x02	// Power sustenance notification
-	#define PWR_MGNT_SETTING_POFN		0x01	// Power off notification
-
-// Performance Enhancement Function Register definitions
-#define PERF_ENH_REV					0		// Ronly
-#define PERF_ENH_EVT_SUP				1		// Ronly
-#define PERF_ENH_MAINT_SUP				2		// Ronly
-#define PERF_ENH_MAINT_URGENCY			3		// Ronly
-#define PERF_ENH_CACHE_SUP				4		// Ronly
-	#define PERF_ENH_CACHE_SUPPORTED	0x1
-#define PERF_ENH_CQ_DEPTH				6		// Ronly
-#define PERF_ENH_TASK_STATUS			8		// 8 - 15 Ronly
-#define PERF_ENH_EVT_FX					257		// R/W
-	#define PERF_ENH_EVT_FX_EN			0x1
-#define PERF_ENH_MAINT_TYP				258		// R/W
-	#define PERF_ENH_MAINT_TYP_HOST_EN		0x2
-	#define PERF_ENH_MAINT_CARD_EN		0x1
-#define PERF_ENH_MAINT					259		// R/W
-	#define PERF_ENH_MAINT_HOST_START	0x1
-#define PERF_ENH_CACHE					260		// R/W
-	#define PERF_ENH_CACHE_EN			0x01
-#define PERF_ENH_CACHE_FLUSH			261		// R/W
-	#define PERF_ENH_CACHE_FLUSH_START	0x01
-#define PERF_ENH_CQ_EN					262		// R/W
-
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/devb/sdmmc/sdiodi/include/sd.h $ $Rev: 879837 $")
 #endif

@@ -1,25 +1,4 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC:
  * Copyright 2014, QNX Software Systems.
  *
@@ -40,14 +19,14 @@
  * $
  */
 
-#include <startup.h>
+#include "startup.h"
 
 int		pauth_active;
 int		meltdown_active = -1; // indicate not set yet.
 int		spectre_v2_active = -1; // Spectre V2 mitigation is off by default.
 int		ssbs_active = -1; // Speculative Store Bypassing Safe is off by default.
-int		cache_snooped = 0; // Cache not snooped by default.
-uint32_t	sve_requested = 0; // SVE support is off by default.
+int		have_el2;
+struct aarch64_original_el2_regs	original_el2_regs;
 
 size_t __page_size = 0x1000;
 
@@ -79,10 +58,16 @@ void
 cpu_startup()
 {
 	/*
-	 * Perform any errata fixes 
+	 * Perform any errata workarounds
 	 */
 	struct aarch64_cpuid *const id = aarch64_cpuid_find();
 	if((id != NULL) && (id->setup != NULL)) {
 		id->setup();
 	}
 }
+
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/startup/lib/aarch64/cpu_startup.c $ $Rev: 931478 $")
+#endif

@@ -1,25 +1,4 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC:
  * Copyright 2007, 2008, QNX Software Systems.
  *
@@ -48,35 +27,19 @@
 
 #if !defined(__X86__) && !defined(__X86_64__)
 
-#ifndef sdhci_in8
-#define sdhci_in8			(in8)
-#endif
-#ifndef sdhci_in16
-#define sdhci_in16			(in16)
-#endif
-#ifndef sdhci_in32
-#define sdhci_in32			(in32)
-#endif
-#ifndef sdhci_in32s
-#define sdhci_in32s			(in32s)
-#endif
-#ifndef sdhci_out8
-#define sdhci_out8			(out8)
-#endif
-#ifndef sdhci_out16
-#define sdhci_out16			(out16)
-#endif
-#ifndef sdhci_out32
-#define sdhci_out32			(out32)
-#endif
-#ifndef sdhci_out32s
-#define sdhci_out32s		(out32s)
-#endif
+#define sdhci_in8			in8
+#define sdhci_in16			in16
+#define sdhci_in32			in32
+#define sdhci_in32s			in32s
+#define sdhci_out8			out8
+#define sdhci_out16			out16
+#define sdhci_out32			out32
+#define sdhci_out32s		out32s
 
 #else
 
 static __inline__ _Uint8t __attribute__((__unused__))
-sdhci_in8(_Uintptrt const __addr) {
+sdhci_in8(_Uintptrt __addr) {
 	_Uint8t	__data;
 
 	__data = *(volatile _Uint8t *)__addr;
@@ -84,7 +47,7 @@ sdhci_in8(_Uintptrt const __addr) {
 }
 
 static __inline__ _Uint16t __attribute__((__unused__))
-sdhci_in16(_Uintptrt const __addr) {
+sdhci_in16(_Uintptrt __addr) {
 	_Uint16t	__data;
 
 	__data = *(volatile _Uint16t *)__addr;
@@ -92,7 +55,7 @@ sdhci_in16(_Uintptrt const __addr) {
 }
 
 static __inline__ _Uint32t __attribute__((__unused__))
-sdhci_in32(_Uintptrt const __addr) {
+sdhci_in32(_Uintptrt __addr) {
 	_Uint32t	__data;
 
 	__data = *(volatile _Uint32t *)__addr;
@@ -100,8 +63,8 @@ sdhci_in32(_Uintptrt const __addr) {
 }
 
 static __inline__ void * __attribute__((__unused__))
-sdhci_in32s(void * const __buff, unsigned __len, _Uintptrt const __addr) {
-	_Uint32t	*__p = __buff;
+sdhci_in32s(void *__buff, unsigned __len, _Uintptrt __addr) {
+	_Uint32t	*__p = (_Uint32t *)__buff;
 
 	--__p;
 	while(__len > 0) {
@@ -112,22 +75,22 @@ sdhci_in32s(void * const __buff, unsigned __len, _Uintptrt const __addr) {
 }
 
 static __inline__ void __attribute__((__unused__))
-sdhci_out8(_Uintptrt const __addr, _Uint8t __data) {
+sdhci_out8(_Uintptrt __addr, _Uint8t __data) {
 	*(volatile _Uint8t *)__addr = __data;
 }
 
 static __inline__ void __attribute__((__unused__))
-sdhci_out16(_Uintptrt const __addr, _Uint16t __data) {
+sdhci_out16(_Uintptrt __addr, _Uint16t __data) {
 	*(volatile _Uint16t *)__addr = ENDIAN_LE16( __data );
 }
 
 static __inline__ void __attribute__((__unused__))
-sdhci_out32(_Uintptrt const __addr, _Uint32t __data) {
+sdhci_out32(_Uintptrt __addr, _Uint32t __data) {
 	*(volatile _Uint32t *)__addr = ENDIAN_LE32( __data );
 }
 
 static __inline__ void * __attribute__((__unused__))
-sdhci_out32s(const void * const __buff, unsigned __len, _Uintptrt const __addr) {
+sdhci_out32s(const void *__buff, unsigned __len, _Uintptrt __addr) {
 	_Uint32t	*__p = (_Uint32t *)__buff;
 
 	--__p;
@@ -149,7 +112,6 @@ sdhci_out32s(const void * const __buff, unsigned __len, _Uintptrt const __addr) 
 #define SDHCI_SIZE				4096
 
 #define	SDHCI_SDMA_ARG2			0x00
-#define	SDHCI_32BIT_BLK_CNT		0x00	/* >= v4 */
 
 #define	SDHCI_BLK				0x04
 	#define SDHCI_BLK_SDMA_BOUNDARY_512K	( 7 << 12 )
@@ -207,10 +169,8 @@ sdhci_out32s(const void * const __buff, unsigned __len, _Uintptrt const __addr) 
 	#define	SDHCI_HCTL_HSE			(1 << 2)	// High Speed Enable
 	#define SDHCI_HCTL_DMA_MSK  	(3 << 3)    // DMA select mask
 	#define SDHCI_HCTL_SDMA      	(0 << 3)    // SDMA select
-	#define SDHCI_HCTL_ADMA32		(2 << 3)	// 32 bit ADMA select (< v4.00)
-	#define SDHCI_HCTL_ADMA64		(3 << 3)	// 64 bit ADMA select (< v4.00)
-	#define SDHCI_HCTL_ADMA2		(2 << 3)	// Enable ADMA2 (>= v4.00 and v4-mode enabled)
-	#define SDHCI_HCTL_ADMA2_ADMA3	(3 << 3)	// Enable ADMA2 and ADMA3 (>= v4.00 and v4-mode enabled)
+	#define SDHCI_HCTL_ADMA32    	(2 << 3)    // 32 bit ADMA select
+	#define SDHCI_HCTL_ADMA64    	(3 << 3)    // 64 bit ADMA select
 	#define	SDHCI_HCTL_MMC8			(1 << 3)	// Data Bus Width 8 bit (Intel)
 	#define SDHCI_HCTL_BW8			(1 << 5)	// 8 bit bus select
 	#define	SDHCI_HCTL_SDBP			(1 << 8)	// SD bus power
@@ -229,8 +189,8 @@ sdhci_out32s(const void * const __buff, unsigned __len, _Uintptrt const __addr) 
 	#define	SDHCI_SYSCTL_CEN		(1 << 2)	// Clock Enable
 	#define	SDHCI_SYSCTL_PLLEN		(1 << 3)	// PLL Enable
 	#define	SDHCI_SYSCTL_CGS_PROG	(1 << 5)	// Clock Generator Select (programmable)
-	#define SDHCI_SYSCTL_CLK( _c )	( ( ( (_c) << 8 ) & 0xff00 ) | ( ( (_c) >> 2 ) & 0xc0 ) )
-	#define SDHCI_SYSCTL_SDCLKFS_MSK	0xffc0
+	#define SDHCI_SYSCTL_CLK( _c )	( ( (_c) << 8 ) | ( ( (_c) >> 2 ) & 0xe0 ) )
+	#define SDHCI_SYSCTL_SDCLKFS_MSK	0xffe0
 	#define	SDHCI_SYSCTL_DTO_MSK	(0xF << 16)	// Data timeout counter value and busy timeout
 	#define	SDHCI_SYSCTL_DTO_MAX	(0xE << 16)	// Timeout = TCF x 2^27
 	#define	SDHCI_SYSCTL_SRA		(1 << 24)	// Software reset for all
@@ -318,7 +278,7 @@ sdhci_out32s(const void * const __buff, unsigned __len, _Uintptrt const __addr) 
 	#define	SDHCI_CAP_EXTMBUS		(1 << 18)	// Extended media bus support
 	#define	SDHCI_CAP_MBL512		(0 << 16)	// Max block length 512
 	#define	SDHCI_CAP_MBL2048		(2 << 16)	// Max block length 2048
-	#define SDHCI_CAP_BASE_CLK( _c, _v )	( ( ( ( _v ) >= SDHCI_SPEC_VER_3 ) ?	\
+	#define SDHCI_CAP_BASE_CLK( _c, _v )	( ( ( _v ) >= SDHCI_SPEC_VER_3 ?	\
 											( ( ( _c ) >> 8 ) & 0xff ) :			\
 											( ( ( _c ) >> 8 ) & 0x3f ) ) * 1000 * 1000 )
 
@@ -373,15 +333,6 @@ typedef struct _sdhci_adma64_t {
 	uint32_t	addr_hi;
 } sdhci_adma64_t;
 
-// 64 bit ADMA descriptor definition (for v4 mode)
-typedef struct _sdhci_v4_adma64_t {
-	uint16_t	attr;
-	uint16_t	len;
-	uint32_t	addr_lo;
-	uint32_t	addr_hi;
-	uint32_t	reserved; /* sbz */
-} sdhci_v4_adma64_t;
-
 #define SDHCI_ADMA2_VALID	(1 << 0)	// valid
 #define SDHCI_ADMA2_END		(1 << 1)	// end of descriptor, transfer complete interrupt will be generated
 #define SDHCI_ADMA2_INT		(1 << 2)	// generate DMA interrupt, will not be used
@@ -391,7 +342,7 @@ typedef struct _sdhci_v4_adma64_t {
 
 // extra 32 bit on top of the descriptor for V4 mode
 #define SDHCI_ADMA2_64_DESC_SZ(sdhc)	\
-		(( (sdhc)->flags & SF_V4_MODE ) ? sizeof( sdhci_v4_adma64_t ) : sizeof( sdhci_adma64_t ))
+		(( sdhc->flags & SF_V4_MODE ) ? sizeof( sdhci_adma64_t ) + sizeof( uint32_t ) : sizeof( sdhci_adma64_t ))
 
 typedef	struct _sdhci_hc {
 	void			*bshdl;
@@ -402,7 +353,6 @@ typedef	struct _sdhci_hc {
 #define SF_USE_ADMA64	0x08
 #define SF_DIS_64BIT	0x10
 #define SF_V4_MODE		0x20
-#define SF_ICE_PERSIST	0x40
 	uint32_t		flags;
 	uint32_t		clk_mul;
 
@@ -420,6 +370,10 @@ typedef	struct _sdhci_hc {
 extern int sdhci_init( sdio_hc_t *hc );
 extern int sdhci_dinit( sdio_hc_t *hc );
 extern int sdhci_getsubopt( char **optionp, char * const *tokens, char **valuep );
-extern int sdhci_reset( sdio_hc_t *hc, uint32_t rst );
 
+#endif
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/devb/sdmmc/sdiodi/hc/sdhci.h $ $Rev: 936885 $")
 #endif

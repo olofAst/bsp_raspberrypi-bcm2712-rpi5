@@ -1,25 +1,4 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC:
  * Copyright 2007-2019, QNX Software Systems.
  *
@@ -40,8 +19,6 @@
  * $
  */
 
-#ifndef _SERPL011_EXTERNS_H_INCLUDED_
-#define _SERPL011_EXTERNS_H_INCLUDED_
 
 #ifdef DEFN
 	#define EXT
@@ -60,7 +37,6 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <sys/neutrino.h>
-#include <sys/dispatch.h>
 #include <termios.h>
 #include <devctl.h>
 #include <sys/dcmd_chr.h>
@@ -69,8 +45,6 @@
 #include <hw/inout.h>
 #include <sys/io-char.h>
 #include <sys/trace.h>
-#include <sys/slog.h>
-#include <sys/slogcodes.h>
 
 #include <arm/pl011.h>
 #include <variant.h>
@@ -106,7 +80,7 @@ typedef struct dev_pl011 {
 	unsigned			dma_xfer_size;
 	unsigned			chan_rx;
 	unsigned			chan_tx;
-	unsigned			is_debug_console;
+	uintptr_t			rp1_iack_reg;	/* Pi 5 RP1 UARTs: MSIn_CFG set register, 0 if not used */
 
 #ifdef USE_DMA
 	dma_addr_t			buf_rx[2];
@@ -121,8 +95,8 @@ typedef struct dev_pl011 {
 	unsigned			buffer0;
 	void				*dma_chn_tx;
 	void				*dma_chn_rx;
-	dma_functions_t		dmafuncs;
-	pthread_mutex_t		dma_lock;
+	dma_functions_t 	dmafuncs;
+	pthread_mutex_t     dma_lock;
 #endif
 } DEV_PL011;
 
@@ -138,11 +112,13 @@ typedef struct ttyinit_pl011 {
 	unsigned	dma_xfer_size;
 	unsigned	chan_rx;
 	unsigned	chan_tx;
-	unsigned	is_debug_console;
 } TTYINIT_PL011;
 
 EXT TTYCTRL				ttyctrl;
 
 #include "proto.h"
 
-#endif  /* _SERPL011_EXTERNS_H_INCLUDED_ */
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/devc/serpl011/externs.h $ $Rev: 932262 $")
+#endif

@@ -1,0 +1,16 @@
+# Build outputs
+/install/
+/images/*.bin
+/images/*.raw
+/images/*.sym
+*.o
+*.a
+*.pinfo
+*.map
+/src/hardware/**/aarch64/*le*/startup-*
+/src/hardware/**/aarch64/*le*/devb-*
+/src/hardware/**/aarch64/*le*/devc-*
+/src/hardware/**/aarch64/*le*/*.use
+/src/hardware/support/**/aarch64/le/*
+!/src/hardware/support/**/aarch64/le/Makefile
+/src/hardware/startup/lib/**/asmoff.def

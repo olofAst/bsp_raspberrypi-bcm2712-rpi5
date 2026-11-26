@@ -1,27 +1,6 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC:
- * Copyright 2007-2020, 2023, BlackBerry Limited.
+ * Copyright 2007-2020, QNX Software Systems.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"). You
  * may not reproduce, modify or distribute this software except in
@@ -40,19 +19,22 @@
  * $
  */
 
-void create_device(TTYINIT_PL011 *dip);
-void ser_stty(DEV_PL011 *dev);
-void ser_attach_intr(DEV_PL011 *dev);
-void ser_detach_intr(DEV_PL011 *dev);
-void write_port(DEV_PL011 *dev, int reg, unsigned val);
-unsigned read_port(DEV_PL011 *dev, int reg);
-int rx_interrupt(DEV_PL011 *dev);
-int tx_interrupt(DEV_PL011 *dev);
-void *timer_thread (void *data);
-void *tx_dma_thread (void *data);
-void *query_default_device(TTYINIT_PL011 *dip, void *link);
-int options(int argc, char *argv[]);
 
-void variant_intr_init(DEV_PL011 *dev);
-void variant_intr_unmask(void);
-int enable_perms(void);
+void		create_device(TTYINIT_PL011 *dip, unsigned unit);
+void		ser_stty(DEV_PL011 *dev);
+void		ser_attach_intr(DEV_PL011 *dev);
+void		ser_detach_intr(DEV_PL011 *dev);
+void		write_port(DEV_PL011 *dev, int reg, unsigned val);
+unsigned	read_port(DEV_PL011 *dev, int reg);
+int			rx_interrupt(DEV_PL011 *dev);
+int			tx_interrupt(DEV_PL011 *dev);
+void		*timer_thread (void *data);
+void		*tx_dma_thread (void *data);
+void *		query_default_device(TTYINIT_PL011 *dip, void *link);
+unsigned	options(int argc, char *argv[]);
+void		rp1_iack_init(DEV_PL011 *dev);
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/devc/serpl011/proto.h $ $Rev: 932262 $")
+#endif

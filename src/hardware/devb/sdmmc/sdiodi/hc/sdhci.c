@@ -1,25 +1,4 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC:
  * Copyright 2007, 2008, QNX Software Systems.
  *
@@ -56,6 +35,29 @@
 
 #include <sdhci.h>
 
+static int sdhci_pwr( sdio_hc_t *hc, int vdd );
+static int sdhci_drv_type( sdio_hc_t *hc, int type );
+static int sdhci_bus_mode( sdio_hc_t *hc, int bus_mode );
+static int sdhci_bus_width( sdio_hc_t *hc, int width );
+static int sdhci_clk( sdio_hc_t *hc, int clk );
+static int sdhci_timing( sdio_hc_t *hc, int timing );
+static int sdhci_signal_voltage( sdio_hc_t *hc, int signal_voltage );
+static int sdhci_cd( sdio_hc_t *hc );
+static int sdhci_cmd( sdio_hc_t *hc, sdio_cmd_t *cmd );
+static int sdhci_abort( sdio_hc_t *hc, sdio_cmd_t *cmd );
+static int sdhci_event( sdio_hc_t *hc, sdio_event_t *ev );
+static int sdhci_tune( sdio_hc_t *hc, int op );
+static int sdhci_preset( sdio_hc_t *hc, int enable );
+
+static sdio_hc_entry_t sdhci_hc_entry =	{ 16,
+										sdhci_dinit, NULL,
+										sdhci_cmd, sdhci_abort,
+										sdhci_event, sdhci_cd, sdhci_pwr,
+										sdhci_clk, sdhci_bus_mode,
+										sdhci_bus_width, sdhci_timing,
+										sdhci_signal_voltage, sdhci_drv_type,
+										NULL, sdhci_tune, sdhci_preset
+										};
 #ifdef SDHCI_DEBUG
 static int sdhci_reg_dump( sdio_hc_t *hc, const char *func, int line )
 {
@@ -67,12 +69,12 @@ static int sdhci_reg_dump( sdio_hc_t *hc, const char *func, int line )
 
 	sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, 1, 1, "%s: line %d", func, line );
 	sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, 1, 1, "%s: HCTL_VER %x, CAP %x, CAP2 %x, MCCAP %x",
-		__FUNCTION__,
+		__FUNCTION__, 
 		sdhci_in16( base + SDHCI_HCTL_VERSION ),
 		sdhci_in32( base + SDHCI_CAP ),
 		sdhci_in32( base + SDHCI_CAP2 ),
 		sdhci_in32( base + SDHCI_MCCAP ) );
-
+	
 	sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, 1, 1, "%s: SDMA_ARG2 %x, ADMA %x, BLK %x, ARG %x, CMD %x, RSP10 %x, RSP32 %x, RSP54 %x,  RSP76 %x",
 		__FUNCTION__,
 		sdhci_in32( base + SDHCI_SDMA_ARG2 ),
@@ -91,7 +93,7 @@ static int sdhci_reg_dump( sdio_hc_t *hc, const char *func, int line )
 		sdhci_in32( base + SDHCI_HCTL ),
 		sdhci_in16( base + SDHCI_HCTL2 ),
 		sdhci_in32( base + SDHCI_SYSCTL ),
-		sdhci_in32( base + SDHCI_IS ),
+		sdhci_in32( base + SDHCI_IS ), 
 		sdhci_in32( base + SDHCI_IE ),
 		sdhci_in32( base + SDHCI_ISE ),
 		sdhci_in32( base + SDHCI_AC12 ),
@@ -102,35 +104,33 @@ static int sdhci_reg_dump( sdio_hc_t *hc, const char *func, int line )
 }
 #endif
 
-static int sdhci_waitmask( sdio_hc_t * const hc, const uint32_t reg, const uint32_t mask, const uint32_t val, const uint32_t usec )
+static int sdhci_waitmask( sdio_hc_t *hc, uint32_t reg, uint32_t mask, uint32_t val, uint32_t usec )
 {
-	sdhci_hc_t		const *sdhc;
+	sdhci_hc_t		*sdhc;
 	uintptr_t		base;
 	uint32_t		cnt;
 	int				stat;
-	uint32_t		rval;
+	int				rval;
 	uint32_t		iter;
 
-	sdhc	= hc->cs_hdl;
+	sdhc	= (sdhci_hc_t *)hc->cs_hdl;
 	base	= sdhc->base;
 	stat	= ETIMEDOUT;
 	rval	= 0;
 
 		// fast poll for 1ms - 1us intervals
 	for( cnt = min( usec, 1000 ); cnt; cnt-- ) {
-		rval = sdhci_in32( base + reg );
-		if( ( rval & mask ) == val ) {
+		if( ( ( rval = sdhci_in32( base + reg ) ) & mask ) == val ) {
 			stat = EOK;
 			break;
 		}
 		nanospin_ns( 1000L );
 	}
 
-	if( ( usec > 1000 ) && stat ) {
-		iter	= usec / 1000U;
+	if( usec > 1000 && stat ) {
+		iter	= usec / 1000L;
 		for( cnt = iter; cnt; cnt-- ) {
-			rval = sdhci_in32( base + reg );
-			if( ( rval & mask ) == val ) {
+			if( ( ( rval = sdhci_in32( base + reg ) ) & mask ) == val ) {
 				stat = EOK;
 				break;
 			}
@@ -140,16 +140,16 @@ static int sdhci_waitmask( sdio_hc_t * const hc, const uint32_t reg, const uint3
 
 #ifdef SDHCI_DEBUG
 	if( !cnt ) {
-		sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, 1, 1, "%s: reg %x, mask %x, val %x, rval %x", __FUNCTION__, reg, mask, val, sdhci_in32( base + reg ) );
+		sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, 1, 1, "%s: reg %x, mask %x, val %x, rval %x", __FUNCTION__, reg, mask, val, sdhci_in32( base + reg ) ); 
 	}
 #endif
 
 	return( stat );
 }
 
-int sdhci_reset( sdio_hc_t * const hc, const uint32_t rst )
+static int sdhci_reset( sdio_hc_t *hc, uint32_t rst )
 {
-	sdhci_hc_t		const *sdhc;
+	sdhci_hc_t		*sdhc;
 	uintptr_t		base;
 	uint32_t		sctl;
 	int				status;
@@ -158,12 +158,12 @@ int sdhci_reset( sdio_hc_t * const hc, const uint32_t rst )
 	sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, 1, 1, "%s:  rst %x", __FUNCTION__, rst );
 #endif
 
-	sdhc	= hc->cs_hdl;
+	sdhc	= (sdhci_hc_t *)hc->cs_hdl;
 	base	= sdhc->base;
 
 	sctl	= sdhci_in32( base + SDHCI_SYSCTL );
 
-	// wait up to 100 ms for reset to complete
+		// wait up to 100 ms for reset to complete
 	sdhci_out32( base + SDHCI_SYSCTL, sctl | rst );
 #ifdef SDIO_HC_SC1810X
 	/*
@@ -180,34 +180,19 @@ int sdhci_reset( sdio_hc_t * const hc, const uint32_t rst )
 		sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, 1, 1, "%s:  timeout", __FUNCTION__ );
 	}
 
-#ifdef SDIO_HC_TEGRA
-	tegra_reset_all(hc, rst);
-#endif
-
-	if( hc->flags & SF_ICE_PERSIST ) {
-		if( rst & SDHCI_SYSCTL_SRA ) {
-			/* For SDHCI cadence ip that need a 1ms delay, to ensure SD Card has been reset properly */
-			delay( 1 );
-			sdhci_out32( base + SDHCI_SYSCTL, SDHCI_SYSCTL_ICE) ;
-			if( sdhci_waitmask( hc, SDHCI_SYSCTL, SDHCI_SYSCTL_ICS, SDHCI_SYSCTL_ICS, 20000 ) != EOK ) {
-				sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, 1, 1, "%s:  wait ics timeout......", __FUNCTION__ );
-			}
-		}
-	}
-
 	return( status );
 }
 
-static int sdhci_pio_xfer( sdio_hc_t * const hc, sdio_cmd_t const * const cmd )
+static int sdhci_pio_xfer( sdio_hc_t *hc, sdio_cmd_t *cmd )
 {
-	sdhci_hc_t		const *sdhc;
+	sdhci_hc_t		*sdhc;
 	uintptr_t		base;
+	int				len;
 	int				msk;
-	uint32_t		len;
-	uint32_t		blksz;
+	int				blksz;
 	uint8_t			*addr;
 
-	sdhc	= hc->cs_hdl;
+	sdhc	= (sdhci_hc_t *)hc->cs_hdl;
 	base	= sdhc->base;
 	msk		= ( cmd->flags & SCF_DIR_IN ) ? SDHCI_PSTATE_BRE : SDHCI_PSTATE_BWE;
 
@@ -230,27 +215,27 @@ static int sdhci_pio_xfer( sdio_hc_t * const hc, sdio_cmd_t const * const cmd )
 	return( EOK );
 }
 
-static int sdhci_intr_event( sdio_hc_t * const hc )
+static int sdhci_intr_event( sdio_hc_t *hc )
 {
-	sdhci_hc_t		const *sdhc;
+	sdhci_hc_t		*sdhc;
 	sdio_cmd_t		*cmd;
 	uint32_t		sts;
-	uint32_t		cs;
-	uint32_t		idx;
+	int				cs;
+	int				idx;
 	uint32_t		rsp;
 	uint8_t			rbyte;
 	uintptr_t		base;
 
-	sdhc	= hc->cs_hdl;
+	sdhc	= (sdhci_hc_t *)hc->cs_hdl;
 	base	= sdhc->base;
-	cs		= CS_CMD_INPROG;
+	cs	= CS_CMD_INPROG;
 
 #ifdef SDHCI_DEBUG
 //	sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, 1, 1, "%s:  is 0x%x, ie 0x%x", __FUNCTION__, sdhci_in32( base + SDHCI_IS ), sdhci_in32( base + SDHCI_IE ) );
 //	sdhci_reg_dump( hc, __FUNCTION__, __LINE__ );
 #endif
 
-#if !defined(__ARM__) && !defined(__aarch64__)
+#if !defined(__ARM__)
 	if( !( sdhci_in16( base + SDHCI_SLOT_IS ) & ( 1 << hc->slot ) ) ) {
 		return( EOK );
 	}
@@ -268,48 +253,29 @@ static int sdhci_intr_event( sdio_hc_t * const hc )
 	if( ( sts & ( SDHCI_INTR_CINS | SDHCI_INTR_CREM ) ) ) {
 		sdio_hc_event( hc, HC_EV_CD );
 	}
-
+	
 	if( ( sts & ( SDCHI_INTR_RETUNE ) ) ) {
 		sdio_hc_event( hc, HC_EV_TUNE );
 	}
-
-	cmd = hc->wspc.cmd;
-	if( cmd == NULL ) {
+	
+	if( ( cmd = hc->wspc.cmd ) == NULL ) {
 		return( EOK );
 	}
 
 	if( ( sts & SDHCI_INTR_ERRI ) ) {			// Check of errors
-		if( sts & SDHCI_INTR_DTO ) {
-			cs = CS_DATA_TO_ERR;
-		}
-		if( sts & SDHCI_INTR_DCRC ) {
-			cs = CS_DATA_CRC_ERR;
-		}
-		if( sts & SDHCI_INTR_DEB ) {
-			cs = CS_DATA_END_ERR;
-		}
-		if( sts & SDHCI_INTR_CTO ) {
-			cs = CS_CMD_TO_ERR;
-		}
-		if( sts & SDHCI_INTR_CCRC ) {
-			cs = CS_CMD_CRC_ERR;
-		}
-		if( sts & SDHCI_INTR_CEB ) {
-			cs = CS_CMD_END_ERR;
-		}
-		if( sts & SDHCI_INTR_CIE ) {
-			cs = CS_CMD_IDX_ERR;
-		}
-		if( sts & SDHCI_INTR_ADMAE ) {
-			cs = CS_DATA_TO_ERR;
-		}
+		if( sts & SDHCI_INTR_DTO )		cs = CS_DATA_TO_ERR;
+		if( sts & SDHCI_INTR_DCRC )		cs = CS_DATA_CRC_ERR;
+		if( sts & SDHCI_INTR_DEB )		cs = CS_DATA_END_ERR;
+		if( sts & SDHCI_INTR_CTO )		cs = CS_CMD_TO_ERR;
+		if( sts & SDHCI_INTR_CCRC )		cs = CS_CMD_CRC_ERR;
+		if( sts & SDHCI_INTR_CEB )		cs = CS_CMD_END_ERR;
+		if( sts & SDHCI_INTR_CIE )		cs = CS_CMD_IDX_ERR;
+		if( sts & SDHCI_INTR_ADMAE )	cs = CS_DATA_TO_ERR;
 		if( sts & SDHCI_INTR_ACE ) {
 //			sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, 1, 1, "%s:  is 0x%x, ac12 0x%x", __FUNCTION__, sdhci_in32( base + SDHCI_IS ), sdhci_in32( base + SDHCI_AC12 ) );
 			cs = CS_DATA_TO_ERR;
 		}
-		if( !cs ) {
-			cs = CS_CMD_CMP_ERR;
-		}
+		if( !cs )						cs = CS_CMD_CMP_ERR;
 		sdhci_reset( hc, SDHCI_SYSCTL_SRD );
 		sdhci_reset( hc, SDHCI_SYSCTL_SRC );
 	}
@@ -318,8 +284,7 @@ static int sdhci_intr_event( sdio_hc_t * const hc )
 			if( ( cmd->flags & SCF_RSP_136 ) ) {
 					// CRC is not included in the response reg, left
 					// shift 8 bits to match the 128 CID/CSD structure
-				rbyte = 0;
-				for( idx = 0; idx < 4; idx++ ) {
+				for( idx = 0, rbyte = 0; idx < 4; idx++ ) {
 					rsp				= sdhci_in32( base + SDHCI_RESP0 + idx * 4 );
 					cmd->rsp[3 - idx] = (rsp << 8) + rbyte;
 					rbyte			= rsp >> 24;
@@ -327,9 +292,6 @@ static int sdhci_intr_event( sdio_hc_t * const hc )
 			}
 			else if( ( cmd->flags & SCF_RSP_PRESENT ) ) {
 				cmd->rsp[0] = sdhci_in32( base + SDHCI_RESP0 );
-			}
-			else {
-				// nothing
 			}
 			cs = CS_CMD_CMP;
 		}
@@ -341,13 +303,10 @@ static int sdhci_intr_event( sdio_hc_t * const hc )
 		else if( ( sts & SDHCI_INTR_DMA ) ) {	// restart on dma boundary
 			sdhci_out32( base + SDHCI_SDMA_ARG2, sdhci_in32( base + SDHCI_SDMA_ARG2 ) );
 		}
-		else {
-			// nothing
-		}
 
 		if( ( sts & ( SDHCI_INTR_BWR | SDHCI_INTR_BRR ) ) ) {
-			if( ( cmd->opcode == SD_SEND_TUNING_BLOCK ) ||
-					( cmd->opcode == MMC_SEND_TUNING_BLOCK ) ) {
+			if( cmd->opcode == SD_SEND_TUNING_BLOCK ||
+					cmd->opcode == MMC_SEND_TUNING_BLOCK ) {
 				cs = CS_CMD_CMP;
 			}
 			else {
@@ -367,7 +326,7 @@ static int sdhci_intr_event( sdio_hc_t * const hc )
 	return( EOK );
 }
 
-static int sdhci_event( sdio_hc_t * const hc, sdio_event_t * const ev )
+static int sdhci_event( sdio_hc_t *hc, sdio_event_t *ev )
 {
 	int		status;
 
@@ -389,23 +348,22 @@ static int sdhci_event( sdio_hc_t * const hc, sdio_event_t * const ev )
 	return( status );
 }
 
-static int sdhci_adma_setup( sdio_hc_t *hc, sdio_cmd_t * const cmd )
+static int sdhci_adma_setup( sdio_hc_t *hc, sdio_cmd_t *cmd )
 {
 	sdhci_hc_t			*sdhc;
 	sdhci_adma64_t		*adma;
 	sdio_sge_t			*sgp;
-	uint32_t			sgc;
-	uint32_t			sgi;
-	uint32_t			acnt;
-	uint32_t			alen;
-	uint32_t			sg_count;
-	uint32_t			desc_sz;
+	int					sgc;
+	int					sgi;
+	int					acnt;
+	int					alen;
+	int					sg_count;
 	paddr64_t			paddr;
-	sdio_hc_cfg_t		*cfg;
+	int					desc_sz;
+	sdio_hc_cfg_t		*cfg = &hc->cfg;
 
-	cfg		= &hc->cfg;
-	sdhc	= hc->cs_hdl;
-	adma	= sdhc->adma;
+	sdhc	= (sdhci_hc_t *)hc->cs_hdl;
+	adma	= (sdhci_adma64_t *)sdhc->adma;
 
 #ifdef SDHCI_DEBUG
 	sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, 1, 1, "%s: ", __FUNCTION__ );
@@ -419,25 +377,17 @@ static int sdhci_adma_setup( sdio_hc_t *hc, sdio_cmd_t * const cmd )
 		sgp = sdhc->sgl;
 	}
 
-	desc_sz = sizeof( sdhci_adma32_t );
-	if( ( sdhc->flags & SF_USE_ADMA64 ) ) {
-		desc_sz = SDHCI_ADMA2_64_DESC_SZ( sdhc );
-	}
-
-	acnt = 0;
-	for( sgi = 0; sgi < sgc; sgi++ ) {
+	desc_sz = ( sdhc->flags & SF_USE_ADMA64 ) ? sizeof( sdhci_adma64_t ) : sizeof( sdhci_adma32_t );
+	for( sgi = 0, acnt = 0; sgi < sgc; sgi++, sgp++ ) {
 		paddr		= sgp->sg_address + cfg->bmstr_xlat;
 		sg_count	= sgp->sg_count;
 		while( sg_count ) {
-			alen			= min( sg_count, SDHCI_ADMA2_MAX_XFER );
-			adma->attr		= SDHCI_ADMA2_VALID | SDHCI_ADMA2_TRAN;
-			adma->addr_lo	= (uint32_t)paddr;
-			adma->len		= alen;
+			alen		= min( sg_count, SDHCI_ADMA2_MAX_XFER );
+			adma->attr	= SDHCI_ADMA2_VALID | SDHCI_ADMA2_TRAN;
+			adma->addr_lo	= paddr;
+			adma->len	= alen;
 			if( ( sdhc->flags & SF_USE_ADMA64 ) ) {
 				adma->addr_hi = paddr >> 32;
-				if( ( sdhc->flags & SF_V4_MODE ) ) {
-					((sdhci_v4_adma64_t *)adma)->reserved = 0; /* SBZ */
-				}
 			}
 			sg_count	-= alen;
 			paddr		+= alen;
@@ -446,13 +396,10 @@ static int sdhci_adma_setup( sdio_hc_t *hc, sdio_cmd_t * const cmd )
 				return( ENOTSUP );
 			}
 		}
-		sgp++;
 	}
 
 	adma = (sdhci_adma64_t *)( (uintptr_t)adma - desc_sz );
 	adma->attr |= SDHCI_ADMA2_END;
-
-	__cpu_membarrier();
 
 	sdhci_out32( sdhc->base + SDHCI_ADMA_ADDRL, (uint32_t)(sdhc->admap + cfg->bmstr_xlat) );
 	if( ( sdhc->flags & SF_USE_ADMA64 ) ) {
@@ -462,13 +409,13 @@ static int sdhci_adma_setup( sdio_hc_t *hc, sdio_cmd_t * const cmd )
 	return( EOK );
 }
 
-static int sdhci_sdma_setup( sdio_hc_t * const hc, sdio_cmd_t * const cmd )
+static int sdhci_sdma_setup( sdio_hc_t *hc, sdio_cmd_t *cmd )
 {
 	sdhci_hc_t		*sdhc;
 	sdio_sge_t		*sgp;
-	uint32_t		sgc;
+	int				sgc;
 
-	sdhc	= hc->cs_hdl;
+	sdhc	= (sdhci_hc_t *)hc->cs_hdl;
 
 #ifdef SDHCI_DEBUG
 	sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, 1, 1, "%s: ", __FUNCTION__ );
@@ -482,25 +429,23 @@ static int sdhci_sdma_setup( sdio_hc_t * const hc, sdio_cmd_t * const cmd )
 		sgp = sdhc->sgl;
 	}
 
-	sdhci_out32( sdhc->base + SDHCI_SDMA_ARG2, (uint32_t)sgp->sg_address );
+	sdhci_out32( sdhc->base + SDHCI_SDMA_ARG2, sgp->sg_address );
 
 	return( EOK );
 }
 
-static int sdhci_xfer_setup( sdio_hc_t * const hc, sdio_cmd_t * const cmd,
+static int sdhci_xfer_setup( sdio_hc_t *hc, sdio_cmd_t *cmd,
 								uint32_t *command, uint32_t *imask )
 {
-	sdhci_hc_t		const *sdhc;
+	sdhci_hc_t		*sdhc;
 	uintptr_t		base;
 	uint32_t		hctl;
-	uint16_t		hctl2;
 	int				status;
 
-	sdhc		= hc->cs_hdl;
+	sdhc		= (sdhci_hc_t *)hc->cs_hdl;
 	status		= EOK;
 	base		= sdhc->base;
 	hctl		= sdhci_in32( base + SDHCI_HCTL ) & ~SDHCI_HCTL_DMA_MSK;
-	hctl2		= sdhci_in16( base + SDHCI_HCTL2 );
 	*command	|= ( cmd->flags & SCF_DIR_IN ) ? ( SDHCI_CMD_DP | SDHCI_CMD_DDIR ) : SDHCI_CMD_DP;
 	*imask		|= SDHCI_INTR_TC | SDHCI_INTR_DTO | SDHCI_INTR_DCRC | SDHCI_INTR_DEB;
 
@@ -508,24 +453,13 @@ static int sdhci_xfer_setup( sdio_hc_t * const hc, sdio_cmd_t * const cmd,
 
 	if( cmd->sgc && ( hc->caps & HC_CAP_DMA ) ) {
 		if( ( sdhc->flags & SF_USE_ADMA ) ) {
-			status = sdhci_adma_setup( hc, cmd );
-			if( status == EOK ) {
-				if( sdhc->flags & SF_V4_MODE ) {
-					hctl	|= SDHCI_HCTL_ADMA2;
-					hctl2	|= SDHCI_HCTL2_V4_MODE;
-					hctl2	&= ~SDHCI_HCTL2_64BIT_ADDR;
-					if( sdhc->flags & SF_USE_ADMA64 ) {
-						hctl2 |= SDHCI_HCTL2_64BIT_ADDR;
-					}
-				} else {
-					hctl	|= ( sdhc->flags & SF_USE_ADMA64 ) ? SDHCI_HCTL_ADMA64 : SDHCI_HCTL_ADMA32;
-				}
+			if( ( status = sdhci_adma_setup( hc, cmd ) ) == EOK ) {
+				hctl		|= ( sdhc->flags & SF_USE_ADMA64 ) ? SDHCI_HCTL_ADMA64 : SDHCI_HCTL_ADMA32;
 				*command	|= SDHCI_CMD_DE;
 			}
 		}
 		else {
-			status = sdhci_sdma_setup( hc, cmd );
-			if( status == EOK ) {
+			if( ( status = sdhci_sdma_setup( hc, cmd ) ) == EOK ) {
 				hctl		|= SDHCI_HCTL_SDMA;
 				*command	|= SDHCI_CMD_DE;
 			}
@@ -549,37 +483,27 @@ static int sdhci_xfer_setup( sdio_hc_t * const hc, sdio_cmd_t * const cmd,
 		else if( ( hc->caps & HC_CAP_ACMD12 ) ) {
 			*command |= SDHCI_CMD_ACMD12;
 		}
-		else {
-			// nothing
-		}
 	}
 
 	sdhci_out32( base + SDHCI_HCTL, hctl );
-
-	if( ( sdhc->flags & SF_V4_MODE ) ) {
-		sdhci_out16( base + SDHCI_HCTL2, hctl2 );
-		sdhci_out32( base + SDHCI_BLK, cmd->blksz );
-		sdhci_out32( base + SDHCI_32BIT_BLK_CNT, cmd->blks );
-	}
-	else {
-		sdhci_out32( base + SDHCI_BLK, cmd->blksz | SDHCI_BLK_SDMA_BOUNDARY_512K |
+	sdhci_out32( base + SDHCI_BLK, cmd->blksz | SDHCI_BLK_SDMA_BOUNDARY_512K |
 				( cmd->blks << SDHCI_BLK_BLKCNT_SHIFT ) );
-	}
 
 	return( status );
 }
 
-static int sdhci_cmd( sdio_hc_t * const hc, sdio_cmd_t * const cmd )
+static int sdhci_cmd( sdio_hc_t *hc, sdio_cmd_t *cmd )
 {
-	sdhci_hc_t		const *sdhc;
+	sdhci_hc_t		*sdhc;
 	uintptr_t		base;
 	uint32_t		pmask;
 	uint32_t		imask;
 	int				status;
 	uint32_t		command;
 
-	sdhc	= hc->cs_hdl;
-	base	= sdhc->base;
+	sdhc			= (sdhci_hc_t *)hc->cs_hdl;
+	base			= sdhc->base;
+
 	imask	= SDHCI_INTR_DFLTS;
 
 #ifndef BS_GPIO_INS_RMV
@@ -599,8 +523,7 @@ static int sdhci_cmd( sdio_hc_t * const hc, sdio_cmd_t * const cmd )
 
 	if( ( cmd->flags & SCF_DATA_MSK ) ) {
 		pmask |= SDHCI_PSTATE_DATI;
-		status = sdhci_xfer_setup( hc, cmd, &command, &imask );
-		if( status != EOK ) {
+		if( ( status = sdhci_xfer_setup( hc, cmd, &command, &imask ) ) != EOK ) {
 			return( status );
 		}
 	}
@@ -628,8 +551,7 @@ static int sdhci_cmd( sdio_hc_t * const hc, sdio_cmd_t * const cmd )
 		}
 	}
 
-	status = sdhci_waitmask( hc, SDHCI_PSTATE, pmask, 0, 100000 );
-	if( status ) {
+	if( ( status = sdhci_waitmask( hc, SDHCI_PSTATE, pmask, 0, 100000 ) ) ) {
 		return( status );
 	}
 
@@ -640,14 +562,14 @@ static int sdhci_cmd( sdio_hc_t * const hc, sdio_cmd_t * const cmd )
 	return( EOK );
 }
 
-static int sdhci_abort( sdio_hc_t * const hc, sdio_cmd_t * const cmd )
+static int sdhci_abort( sdio_hc_t *hc, sdio_cmd_t *cmd )
 {
 	return( EOK );
 }
 
-static int sdhci_pwr( sdio_hc_t * const hc, const uint32_t vdd )
+static int sdhci_pwr( sdio_hc_t *hc, int vdd )
 {
-	sdhci_hc_t		const *sdhc;
+	sdhci_hc_t		*sdhc;
 	uintptr_t		base;
 	uint32_t		hctl;
 
@@ -655,7 +577,7 @@ static int sdhci_pwr( sdio_hc_t * const hc, const uint32_t vdd )
 	sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, 1, 1, "%s: vdd 0x%x", __FUNCTION__, vdd );
 #endif
 
-	sdhc	= hc->cs_hdl;
+	sdhc	= (sdhci_hc_t *)hc->cs_hdl;
 	base	= sdhc->base;
 
 		// disable interrupts
@@ -672,18 +594,15 @@ static int sdhci_pwr( sdio_hc_t * const hc, const uint32_t vdd )
 		hctl = sdhci_in32( base + SDHCI_HCTL ) & ~SDHCI_HCTL_SDVS_MSK;
 		switch( vdd ) {
 			case OCR_VDD_17_195:
-				hctl |= SDHCI_HCTL_SDVS1V8;
-				break;
+				hctl |= SDHCI_HCTL_SDVS1V8; break;
 
 			case OCR_VDD_30_31:
 			case OCR_VDD_29_30:
-				hctl |= SDHCI_HCTL_SDVS3V0;
-				break;
+				hctl |= SDHCI_HCTL_SDVS3V0; break;
 
 			case OCR_VDD_33_34:
 			case OCR_VDD_32_33:
-				hctl |= SDHCI_HCTL_SDVS3V3;
-				break;
+				hctl |= SDHCI_HCTL_SDVS3V3; break;
 
 			default:
 				return( EINVAL );
@@ -709,7 +628,7 @@ static int sdhci_pwr( sdio_hc_t * const hc, const uint32_t vdd )
 	return( EOK );
 }
 
-static int sdhci_bus_mode( sdio_hc_t *hc, const uint32_t bus_mode )
+static int sdhci_bus_mode( sdio_hc_t *hc, int bus_mode )
 {
 #ifdef SDHCI_DEBUG
 	sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, 1, 1, "%s: bus_mode %d", __FUNCTION__, bus_mode );
@@ -720,9 +639,9 @@ static int sdhci_bus_mode( sdio_hc_t *hc, const uint32_t bus_mode )
 	return( EOK );
 }
 
-static int sdhci_bus_width( sdio_hc_t *hc, const uint32_t width )
+static int sdhci_bus_width( sdio_hc_t *hc, int width )
 {
-	sdhci_hc_t		const *sdhc;
+	sdhci_hc_t		*sdhc;
 	uintptr_t		base;
 	uint32_t		hctl;
 
@@ -730,7 +649,7 @@ static int sdhci_bus_width( sdio_hc_t *hc, const uint32_t width )
 	sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, 1, 1, "%s: width %d", __FUNCTION__, width );
 #endif
 
-	sdhc	= hc->cs_hdl;
+	sdhc	= (sdhci_hc_t *)hc->cs_hdl;
 	base	= sdhc->base;
 	hctl	= sdhci_in8( base + SDHCI_HCTL ) & ~SDHCI_HCTL_DTW4;
 	hctl	&= ~( hc->version ? SDHCI_HCTL_BW8 : SDHCI_HCTL_MMC8 );
@@ -756,40 +675,33 @@ static int sdhci_bus_width( sdio_hc_t *hc, const uint32_t width )
 	return( EOK );
 }
 
-static int sdhci_clk( sdio_hc_t *hc, const uint32_t clk )
+static int sdhci_clk( sdio_hc_t *hc, int clk )
 {
-	sdhci_hc_t		const *sdhc;
+	sdhci_hc_t		*sdhc;
 	uintptr_t		base;
 	uint32_t		sctl;
-	uint32_t		clkd;
+	int				clkd;
 
 #ifdef SDHCI_DEBUG
 	sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, 1, 1, "%s: clk %d", __FUNCTION__, clk );
 #endif
 
-	sdhc	= hc->cs_hdl;
+	sdhc	= (sdhci_hc_t *)hc->cs_hdl;
 	base	= sdhc->base;
 	clkd	= 0;
 	sctl	= sdhci_in32( base + SDHCI_SYSCTL );
 
-	if ( hc->flags & SF_ICE_PERSIST ) {
-		// stop clock except for ICE
-		sctl &= ~(SDHCI_SYSCTL_CEN | SDHCI_SYSCTL_DTO_MSK |
-			SDHCI_SYSCTL_CGS_PROG | SDHCI_SYSCTL_SDCLKFS_MSK);
-	} else {
 		// stop clock
-		sctl &= ~(SDHCI_SYSCTL_ICE | SDHCI_SYSCTL_CEN | SDHCI_SYSCTL_DTO_MSK |
-			SDHCI_SYSCTL_CGS_PROG | SDHCI_SYSCTL_SDCLKFS_MSK);
-	}
-
-	sctl |= SDHCI_SYSCTL_DTO_MAX;
-	sdhci_out32( base + SDHCI_SYSCTL, sctl | SDHCI_SYSCTL_SRC | SDHCI_SYSCTL_SRD );
+	sctl &= ~(SDHCI_SYSCTL_ICE | SDHCI_SYSCTL_CEN | SDHCI_SYSCTL_DTO_MSK |
+				SDHCI_SYSCTL_CGS_PROG | SDHCI_SYSCTL_SDCLKFS_MSK);
+	sctl |= SDHCI_SYSCTL_DTO_MAX | SDHCI_SYSCTL_SRC | SDHCI_SYSCTL_SRD;
+	sdhci_out32( base + SDHCI_SYSCTL, sctl );
 
 	if( hc->version >= SDHCI_SPEC_VER_3 ) {
 		if( sdhc->clk_mul ) {
 			if( !( sdhci_in16( base + SDHCI_HCTL2 ) & SDHCI_HCTL2_PRESET_VAL ) ) {
 				for( clkd = 1; clkd < 1024; clkd++ ) {
-					if( ( hc->clk_max / clkd ) <= clk ) {
+					if( ( ( hc->clk_max * sdhc->clk_mul ) / clkd ) <= clk ) {
 						break;
 					}
 				}
@@ -839,9 +751,9 @@ static int sdhci_clk( sdio_hc_t *hc, const uint32_t clk )
 	return( EOK );
 }
 
-static int sdhci_timing( sdio_hc_t *hc, const uint32_t timing )
+static int sdhci_timing( sdio_hc_t *hc, int timing )
 {
-	sdhci_hc_t		const *sdhc;
+	sdhci_hc_t		*sdhc;
 	uintptr_t		base;
 	uint32_t		hctl;
 	uint16_t		hctl2;
@@ -850,7 +762,7 @@ static int sdhci_timing( sdio_hc_t *hc, const uint32_t timing )
 	sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, 1, 1, "%s: timing %d", __FUNCTION__, timing );
 #endif
 
-	sdhc	= hc->cs_hdl;
+	sdhc	= (sdhci_hc_t *)hc->cs_hdl;
 	base	= sdhc->base;
 	hctl	= sdhci_in32( base + SDHCI_HCTL ) & ~SDHCI_HCTL_HSE;
 	hctl2	= 0;
@@ -927,9 +839,9 @@ static int sdhci_timing( sdio_hc_t *hc, const uint32_t timing )
 	return( EOK );
 }
 
-static int sdhci_signal_voltage( sdio_hc_t *hc, const uint32_t signal_voltage )
+static int sdhci_signal_voltage( sdio_hc_t *hc, int signal_voltage )
 {
-	sdhci_hc_t		const *sdhc;
+	sdhci_hc_t		*sdhc;
 	uintptr_t		base;
 	uint32_t		sctl;
 
@@ -937,7 +849,7 @@ static int sdhci_signal_voltage( sdio_hc_t *hc, const uint32_t signal_voltage )
 	sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, 1, 1, "%s: signal_voltage %d", __FUNCTION__, signal_voltage );
 #endif
 
-	sdhc	= hc->cs_hdl;
+	sdhc	= (sdhci_hc_t *)hc->cs_hdl;
 	base	= sdhc->base;
 
 	if( hc->version < SDHCI_SPEC_VER_3 ) {
@@ -945,15 +857,6 @@ static int sdhci_signal_voltage( sdio_hc_t *hc, const uint32_t signal_voltage )
 	}
 
 	if( hc->signal_voltage == signal_voltage ) {
-		if( signal_voltage == SIGNAL_VOLTAGE_3_3 ) {
-			sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, 1, 1, "%s: voltage already 3.3V", __FUNCTION__ );
-		}
-		else if( signal_voltage == SIGNAL_VOLTAGE_1_8 ) {
-			sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, 1, 1, "%s: voltage already 1.8V", __FUNCTION__ );
-		}
-		else {
-		    sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, 1, 1, "%s: voltage already: %u, return EOK", __FUNCTION__, signal_voltage );
-		}
 		return( EOK );
 	}
 
@@ -964,7 +867,6 @@ static int sdhci_signal_voltage( sdio_hc_t *hc, const uint32_t signal_voltage )
 			sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, 1, 1, "%s: switch 3.3V failure", __FUNCTION__ );
 			return( EIO );
 		}
-		sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, 1, 1, "%s: switch 3.3V OK", __FUNCTION__ );
 	}
 	else if( signal_voltage == SIGNAL_VOLTAGE_1_8 ) {
 			// disable clock
@@ -972,8 +874,7 @@ static int sdhci_signal_voltage( sdio_hc_t *hc, const uint32_t signal_voltage )
 		sdhci_out32( base + SDHCI_SYSCTL, sctl & ~SDHCI_SYSCTL_CEN );
 
 			// Check whether DAT[3:0] is 0000
-			// The specification has a check for DAT[3:0] == 0000, but doesn't work on some platforms
-//		if( !( sdhci_in32( base + SDHCI_PSTATE ) & SDHCI_PSTATE_DLSL_MSK ) || (hc->flags & HC_FLAG_DEV_MMC) ) {
+		if( !( sdhci_in32( base + SDHCI_PSTATE ) & SDHCI_PSTATE_DLSL_MSK ) || (hc->flags & HC_FLAG_DEV_MMC) ) {
 			sdhci_out16( base + SDHCI_HCTL2, sdhci_in16( base + SDHCI_HCTL2 ) | SDHCI_HCTL2_SIG_1_8V );
 
 			delay( 5 );
@@ -982,19 +883,14 @@ static int sdhci_signal_voltage( sdio_hc_t *hc, const uint32_t signal_voltage )
 				sdhci_out32( base + SDHCI_SYSCTL, sctl );	// re-enable clock
 
 				delay( 1 );
-#ifdef SDIO_HC_TEGRA
-				/* DAT[3:0] level doesn't change on Tegra SOC */
-				hc->signal_voltage = signal_voltage;
-				return( EOK );
-#endif
+
 					// If DAT[3:0] level is 1111b, then the switch succeeded
 				if( ( ( sdhci_in32( base + SDHCI_PSTATE ) & SDHCI_PSTATE_DLSL_MSK ) == SDHCI_PSTATE_DLSL_MSK ) || (hc->flags & HC_FLAG_DEV_MMC) ) {
 					hc->signal_voltage = signal_voltage;
-					sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, 1, 1, "%s: switch 1.8V OK", __FUNCTION__ );
 					return( EOK );
 				}
 			}
-//		}
+		}
 
 			// voltage switch failed, cycle power
 		sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, 1, 1, "%s: switch 1.8V failure", __FUNCTION__ );
@@ -1004,18 +900,15 @@ static int sdhci_signal_voltage( sdio_hc_t *hc, const uint32_t signal_voltage )
 		sdhci_out32( base + SDHCI_HCTL, sdhci_in32( base + SDHCI_HCTL ) | SDHCI_HCTL_SDBP );
 		return( EIO );
 	}
-	else {
-		// nothing
-	}
 
 	hc->signal_voltage = signal_voltage;
 
 	return( EOK );
 }
 
-static int sdhci_drv_type( sdio_hc_t *hc, const uint32_t type )
+static int sdhci_drv_type( sdio_hc_t *hc, int type )
 {
-	sdhci_hc_t		const *sdhc;
+	sdhci_hc_t		*sdhc;
 	uintptr_t		base;
 	uint16_t		hctl2;
 
@@ -1027,25 +920,21 @@ static int sdhci_drv_type( sdio_hc_t *hc, const uint32_t type )
 		return( EOK );
 	}
 
-	sdhc	= hc->cs_hdl;
+	sdhc	= (sdhci_hc_t *)hc->cs_hdl;
 	base	= sdhc->base;
 	hctl2	= sdhci_in16( base + SDHCI_HCTL2 ) & ~SDHCI_HCTL2_DRV_TYPE_MSK;
 
 	if( !( hctl2 & SDHCI_HCTL2_PRESET_VAL ) ) {
 		switch( type ) {
 			case DRV_TYPE_A:
-				hctl2 |= SDHCI_HCTL2_DRV_TYPE_A;
-				break;
+				hctl2 |= SDHCI_HCTL2_DRV_TYPE_A; break;
 			case DRV_TYPE_C:
-				hctl2 |= SDHCI_HCTL2_DRV_TYPE_C;
-				break;
+				hctl2 |= SDHCI_HCTL2_DRV_TYPE_C; break;
 			case DRV_TYPE_D:
-				hctl2 |= SDHCI_HCTL2_DRV_TYPE_D;
-				break;
+				hctl2 |= SDHCI_HCTL2_DRV_TYPE_D; break;
 			case DRV_TYPE_B:
 			default:
-				hctl2 |= SDHCI_HCTL2_DRV_TYPE_B;
-				break;
+				hctl2 |= SDHCI_HCTL2_DRV_TYPE_B; break;
 				break;
 		}
 
@@ -1057,24 +946,24 @@ static int sdhci_drv_type( sdio_hc_t *hc, const uint32_t type )
 	return( EOK );
 }
 
-static int sdhci_tune( sdio_hc_t *hc, const uint32_t op )
+static int sdhci_tune( sdio_hc_t *hc, int op )
 {
-	sdhci_hc_t			const *sdhc;
+	sdhci_hc_t			*sdhc;
 	struct sdio_cmd		*cmd;
 	uintptr_t			base;
 	uint16_t			hctl2;
 	int					tlc;
 	uint8_t				*rbuf;
-	uint32_t			tlen;
+	int					tlen;
 	int					status;
 
 #ifdef SDHCI_DEBUG
 	sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, 1, 1, "%s: ", __FUNCTION__ );
 #endif
 
-	sdhc	= hc->cs_hdl;
+	sdhc	= (sdhci_hc_t *)hc->cs_hdl;
 	base	= sdhc->base;
-	tlen	= ( hc->bus_width == BUS_WIDTH_8 ) ? 128U : 64U;
+	tlen	= hc->bus_width == BUS_WIDTH_8 ? 128 : 64;
 	rbuf	= alloca(tlen);
 
 	if( hc->version < SDHCI_SPEC_VER_3 ) {
@@ -1091,8 +980,7 @@ static int sdhci_tune( sdio_hc_t *hc, const uint32_t op )
 		return( EOK );
 	}
 
-	cmd = sdio_alloc_cmd( );
-	if( cmd == NULL ) {
+	if( ( cmd = sdio_alloc_cmd( ) ) == NULL ) {
 		return( ENOMEM );
 	}
 
@@ -1105,15 +993,13 @@ static int sdhci_tune( sdio_hc_t *hc, const uint32_t op )
 		sdio_setup_cmd( cmd, SCF_CTYPE_ADTC | SCF_RSP_R1, op, 0 );
 		sdio_setup_cmd_io( cmd, SCF_DIR_IN, 1, tlen, NULL, 0, NULL );
 
-		status = sdio_issue_cmd( &hc->device, cmd, SDHCI_TUNING_TIMEOUT );
-		if( status ) {
+		if( ( status = sdio_issue_cmd( &hc->device, cmd, SDHCI_TUNING_TIMEOUT ) ) ) {
 			break;
 		}
 
 		sdhci_in32s( rbuf, tlen >> 2, base + SDHCI_DATA );
 
-		hctl2 = sdhci_in16( base + SDHCI_HCTL2 );
-		if( !( hctl2 & SDHCI_HCTL2_EXEC_TUNING ) ) {
+		if( !( ( hctl2 = sdhci_in16( base + SDHCI_HCTL2 ) ) & SDHCI_HCTL2_EXEC_TUNING ) ) {
 			break;
 		}
 	}
@@ -1121,7 +1007,6 @@ static int sdhci_tune( sdio_hc_t *hc, const uint32_t op )
 	if( status || ( hctl2 & SDHCI_HCTL2_EXEC_TUNING ) ) {
 		hctl2 &= ~( SDHCI_HCTL2_TUNED_CLK | SDHCI_HCTL2_EXEC_TUNING );
 		sdhci_out16( base + SDHCI_HCTL2, hctl2 );
-		sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 0, "%s: tuning failure (%d 0x%x)", __FUNCTION__, status, hctl2 );
 		status = EIO;
 	}
 
@@ -1130,9 +1015,9 @@ static int sdhci_tune( sdio_hc_t *hc, const uint32_t op )
 	return( status );
 }
 
-static int sdhci_preset( sdio_hc_t * const hc, const uint32_t enable )
+static int sdhci_preset( sdio_hc_t *hc, int enable )
 {
-	sdhci_hc_t		const *sdhc;
+	sdhci_hc_t		*sdhc;
 	uintptr_t		base;
 	uint16_t		hctl2;
 
@@ -1140,7 +1025,7 @@ static int sdhci_preset( sdio_hc_t * const hc, const uint32_t enable )
 	sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, 1, 1, "%s: ", __FUNCTION__ );
 #endif
 
-	sdhc	= hc->cs_hdl;
+	sdhc	= (sdhci_hc_t *)hc->cs_hdl;
 	base	= sdhc->base;
 
 	if( hc->version < SDHCI_SPEC_VER_3 ) {
@@ -1154,14 +1039,14 @@ static int sdhci_preset( sdio_hc_t * const hc, const uint32_t enable )
 	return( EOK );
 }
 
-static int sdhci_cd( sdio_hc_t * const hc )
+static int sdhci_cd( sdio_hc_t *hc )
 {
-	sdhci_hc_t		const *sdhc;
+	sdhci_hc_t		*sdhc;
 	uintptr_t		base;
 	uint32_t		pstate;
 	int				cstate;
 
-	sdhc	= hc->cs_hdl;
+	sdhc	= (sdhci_hc_t *)hc->cs_hdl;
 	base  	= sdhc->base;
 
 	if( ( hc->caps & HC_CAP_SLOT_TYPE_EMBEDDED ) ) {
@@ -1183,15 +1068,14 @@ static int sdhci_cd( sdio_hc_t * const hc )
 	return( cstate );
 }
 
-int sdhci_dinit( sdio_hc_t * const hc )
+int sdhci_dinit( sdio_hc_t *hc )
 {
 	sdhci_hc_t	*sdhc;
 
-	sdhc	= hc->cs_hdl;
+	sdhc	= (sdhci_hc_t *)hc->cs_hdl;
 
-	if( !sdhc ) {
+	if( !sdhc )
 		return EOK;
-	}
 
 	if( sdhc->base ) {
 		sdhci_pwr( hc, 0 );
@@ -1203,13 +1087,7 @@ int sdhci_dinit( sdio_hc_t * const hc )
 	}
 
 	if( sdhc->adma ) {
-		size_t desc_sz = sizeof( sdhci_adma32_t );
-
-		if( ( sdhc->flags & SF_USE_ADMA64 ) ) {
-			desc_sz = SDHCI_ADMA2_64_DESC_SZ( sdhc );
-		}
-
-		sdio_free( sdhc->adma, desc_sz * ADMA_DESC_MAX );
+		sdio_free( sdhc->adma, sizeof( sdhci_adma32_t ) * ADMA_DESC_MAX );
 	}
 
 	free( sdhc );
@@ -1222,9 +1100,8 @@ static int sdhci_hs_args( sdio_hc_t *hc )
 	sdio_hc_cfg_t	*cfg;
 	sdhci_hc_t		*sdhc;
 	int				opt;
-	int				status;
-	char			*value;
-	char			*options;
+	int				status = EOK;
+	char			*value, *options;
 	static char		*opts[] = {
 #define DIS_64BIT	0
         "noadma64",
@@ -1234,25 +1111,20 @@ static int sdhci_hs_args( sdio_hc_t *hc )
         "hs400",
 #define HS200		3
         "hs200",
-#define V4_MODE		4
-        "v4",
 		NULL
 	};
 
 	cfg		= &hc->cfg;
 	options	= cfg->hsoptions;
-	sdhc	= hc->cs_hdl;
-	status	= EOK;
+	sdhc	= (sdhci_hc_t *)hc->cs_hdl;
 
-	while( ( options != NULL ) && ( *options != '\0' ) && ( status == EOK ) ) {
-		opt = sdio_hc_getsubopt( &options, opts, &value );
-		if( opt == -1 ) {
-			sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 0, "%s: Invalid HS option %s", __FUNCTION__, value );
-			status = EINVAL;
-			break;
+	while( options && *options != '\0' ) {
+		if( ( opt = sdio_hc_getsubopt( &options, opts, &value ) ) == -1 ) {
+			sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 0, "%s: invalid HS options %s", __func__, options );
+			continue;
 		}
 
-		switch( opt ) {
+		switch (opt) {
 			case DIS_64BIT:
 				sdhc->flags |= SF_DIS_64BIT;
 				break;
@@ -1264,11 +1136,6 @@ static int sdhci_hs_args( sdio_hc_t *hc )
 				break;
 			case HS200:
 				hc->caps	|= HC_CAP_HS200;
-				break;
-			case V4_MODE:
-				sdhc->flags	|= SF_V4_MODE;
-				break;
-			default:
 				break;
 		}
 	}
@@ -1287,7 +1154,6 @@ int sdhci_init( sdio_hc_t *hc )
 	uintptr_t			base;
 	struct sigevent		event;
 	uint8_t				desc_sz;
-	int					status;
 
 #ifdef SDHCI_DEBUG
 	sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, 1, 1, "%s: ", __FUNCTION__ );
@@ -1296,63 +1162,33 @@ int sdhci_init( sdio_hc_t *hc )
 	hc->hc_iid			= -1;
 	cfg					= &hc->cfg;
 
-//	memcpy( &hc->entry, &sdhci_hc_entry, sizeof( sdio_hc_entry_t ) );
-	hc->entry			= (sdio_hc_entry_t) {	.nentries			= SDIO_HC_ENTRY_NFUNCS,
-												.dinit				= sdhci_dinit,
-												.pm					= NULL,
-												.cmd				= sdhci_cmd,
-												.abort				= sdhci_abort,
-												.event				= sdhci_event,
-												.cd					= sdhci_cd,
-												.pwr				= sdhci_pwr,
-												.clk				= sdhci_clk,
-												.bus_mode			= sdhci_bus_mode,
-												.bus_width			= sdhci_bus_width,
-												.timing				= sdhci_timing,
-												.signal_voltage		= sdhci_signal_voltage,
-												.drv_type			= sdhci_drv_type,
-												.driver_strength	= NULL,
-												.tune				= sdhci_tune,
-												.preset				= sdhci_preset
-											};
+	memcpy( &hc->entry, &sdhci_hc_entry, sizeof( sdio_hc_entry_t ) );
 
-	if( !cfg->base_addr[0] ) {
+	if( !cfg->base_addr[0] )
 		return( ENODEV );
-	}
 
-	if( !cfg->base_addr_size[0] ) {
+	if( !cfg->base_addr_size[0] )
 		cfg->base_addr_size[0] = SDHCI_SIZE;
-	}
 
-	sdhc = calloc( 1, sizeof( sdhci_hc_t ) );
-	if( sdhc == NULL ) {
+	if( ( sdhc = hc->cs_hdl = calloc( 1, sizeof( sdhci_hc_t ) ) ) == NULL )
 		return( ENOMEM );
-	}
 
-    hc->cs_hdl = sdhc;
-
-	base = (uintptr_t)mmap_device_memory( NULL, cfg->base_addr_size[0],
-			PROT_READ | PROT_WRITE | PROT_NOCACHE, MAP_SHARED, cfg->base_addr[0] );
-	if( base == (uintptr_t)MAP_FAILED ) {
+	if( ( base = sdhc->base = (uintptr_t)mmap_device_memory( NULL, cfg->base_addr_size[0],
+			PROT_READ | PROT_WRITE | PROT_NOCACHE, MAP_SHARED,
+			cfg->base_addr[0] ) ) == (uintptr_t)MAP_FAILED ) {
 		sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, 1, 1, "%s: SDHCI base mmap_device_memory (0x%" PRIx64 "x) %s", __FUNCTION__, cfg->base_addr[0], strerror( errno ) );
 		sdhci_dinit( hc );
 		return( errno );
 	}
 
-	sdhc->base = base;
+	// Parse host specific options
+	sdhci_hs_args( hc );
 
-	status = sdhci_hs_args( hc );			// Parse host specific options
-	if( status != EOK ) {
-		sdhci_dinit( hc );
-		return( status );
-	}
-
-	if( !hc->version ) {
+	if( !hc->version )
 		hc->version = sdhci_in16( base + SDHCI_HCTL_VERSION ) & SDHCI_SPEC_VER_MSK;
-	}
 
 	cap			= sdhci_in32( base + SDHCI_CAP );
-	cap2		= ( hc->version >= SDHCI_SPEC_VER_3 ) ? sdhci_in32( base + SDHCI_CAP2 ) : 0;
+	cap2		= hc->version >= SDHCI_SPEC_VER_3 ? sdhci_in32( base + SDHCI_CAP2 ) : 0;
 	mccap		= sdhci_in32( base + SDHCI_MCCAP );
 
 	hc->clk_max = SDHCI_CAP_BASE_CLK( cap, hc->version );
@@ -1368,73 +1204,57 @@ int sdhci_init( sdio_hc_t *hc )
 		}
 	}
 
-	hc->caps	|= HC_CAP_BSY | HC_CAP_BW4 | HC_CAP_CD_WP;
+	hc->caps	|= HC_CAP_BSY | HC_CAP_BW4;
 	hc->caps	|= HC_CAP_ACMD12 | HC_CAP_200MA | HC_CAP_DRV_TYPE_B;
 
-	if( !( hc->caps & HC_CAP_SLOT_TYPE_EMBEDDED ) ) {
+	if( !( hc->caps & HC_CAP_SLOT_TYPE_EMBEDDED ) )
 		hc->caps |= HC_CAP_CD_INTR;
-	}
 
-	if( ( cap & SDHCI_CAP_HS ) ) {
+	if( ( cap & SDHCI_CAP_HS ) )
 		hc->caps |= HC_CAP_HS;
-	}
 
-	if( ( cap & SDHCI_CAP_DMA ) ) {
+	if( ( cap & SDHCI_CAP_DMA ) )
 		hc->caps |= HC_CAP_DMA;
-	}
-
-//	if( ( cap2 & SDHCI_CAP_HS200 ) ) {
+	
+//	if( ( cap2 & SDHCI_CAP_HS200 ) )
 //		hc->caps	|= HC_CAP_HS200;
-//	}
 
-	if( ( cap2 & SDHCI_CAP_SDR104 ) ) {
+	if( ( cap2 & SDHCI_CAP_SDR104 ) )
 		hc->caps	|= HC_CAP_SDR104;
-	}
 
-	if( ( cap2 & SDHCI_CAP_SDR50 ) ) {
+	if( ( cap2 & SDHCI_CAP_SDR50 ) )
 		hc->caps	|= HC_CAP_SDR50 | HC_CAP_SDR25 | HC_CAP_SDR12;
-	}
 
-	if( ( cap2 & SDHCI_CAP_DDR50 ) ) {
+	if( ( cap2 & SDHCI_CAP_DDR50 ) )
 		hc->caps	|= HC_CAP_DDR50;
-	}
 
-	if( ( cap2 & SDHCI_CAP_TUNE_SDR50 ) ) {
+	if( ( cap2 & SDHCI_CAP_TUNE_SDR50 ) )
 		sdhc->flags |= SF_TUNE_SDR50;
-	}
 
-	if( ( cap2 & SDHCI_CAP_DRIVE_TYPE_A ) ) {
+	if( ( cap2 & SDHCI_CAP_DRIVE_TYPE_A ) )
 		hc->caps	|= HC_CAP_DRV_TYPE_A;
-	}
 
-	if( ( cap2 & SDHCI_CAP_DRIVE_TYPE_C ) ) {
+	if( ( cap2 & SDHCI_CAP_DRIVE_TYPE_C ) )
 		hc->caps	|= HC_CAP_DRV_TYPE_C;
-	}
 
-	if( ( cap2 & SDHCI_CAP_DRIVE_TYPE_D ) ) {
+	if( ( cap2 & SDHCI_CAP_DRIVE_TYPE_D ) )
 		hc->caps	|= HC_CAP_DRV_TYPE_D;
-	}
 
 	if( ( cap & SDHCI_CAP_S18 ) ) {
 		hc->ocr			= OCR_VDD_17_195;
 		cur				= SDHCI_MCCAP_180( mccap ) * SDHCI_MCCAP_MULT;
 
-		if( cur >= 150 ) {
+		if( cur >= 150 )
 			hc->caps	|= HC_CAP_XPC_3_0V;
-		}
 
-		if( cur >= 800 ) {
+		if( cur >= 800 )
 			hc->caps 	|= HC_CAP_800MA;
-		}
-		else if( cur >= 600 ) {
+		else if( cur >= 600 )
 			hc->caps 	|= HC_CAP_600MA;
-		}
-		else if( cur >= 400 ) {
+		else if( cur >= 400 )
 			hc->caps 	|= HC_CAP_400MA;
-		}
-		else {
+		else
 			hc->caps 	|= HC_CAP_200MA;
-		}
 	}
 
 	if( ( cap & SDHCI_CAP_S30 ) ) {
@@ -1462,47 +1282,35 @@ int sdhci_init( sdio_hc_t *hc )
 		hc->caps	|= HC_CAP_SV_1_8V;
 	}
 
-		// clear v4 mode flag on unsupported versions ie < 4
-	if( hc->version < SDHCI_SPEC_VER_4 ) {
-		sdhc->flags &= ~SF_V4_MODE;
-	}
-
 	if( ( cap & SDHCI_CAP_DMA ) ) {
 		if( hc->version >= SDHCI_SPEC_VER_2 ) {
 			desc_sz		= sizeof( sdhci_adma32_t );
 			if( hc->version >= SDHCI_SPEC_VER_3 ) {
 				if( ( cap & SDHCI_CAP_64BIT_ADDR ) && !( sdhc->flags & SF_DIS_64BIT ) ) {
 					sdhc->flags	|= SF_USE_ADMA64;
-					hc->caps	|= HC_CAP_DMA64;
-					desc_sz		= SDHCI_ADMA2_64_DESC_SZ( sdhc );
+					desc_sz		= sizeof( sdhci_adma64_t );
 				}
 				hc->caps	|= HC_CAP_ACMD23;
 			}
 			hc->cfg.sg_max	= ADMA_DESC_MAX;
-
-			sdhc->adma = sdio_alloc( desc_sz * ADMA_DESC_MAX );
-			if( sdhc->adma == NULL ) {
+			if( ( sdhc->adma = sdio_alloc( desc_sz * ADMA_DESC_MAX ) ) == NULL) {
 				sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, 1, 1, "%s: ADMA mmap %s", __FUNCTION__, strerror( errno ) );
 				sdhci_dinit( hc );
 				return( errno );
 			}
 			sdhc->flags		|= SF_USE_ADMA;
 			sdhc->admap		= sdio_vtop( sdhc->adma );
-			if( hc->version >= SDHCI_SPEC_VER_3 ) {
-				hc->caps	|= HC_CAP_ACMD23;
-			}
 		}
 		else {
 			hc->cfg.sg_max	= 1;
 			sdhc->flags		|= SF_USE_SDMA;
 		}
 	}
-
+	
 	hc->caps	&= cfg->caps;		// reconcile command line options
 
-	SIGEV_PULSE_INIT( &event, hc->hc_coid, (short)hc->priority, HC_EV_INTR, NULL );
-	hc->hc_iid = InterruptAttachEvent( cfg->irq[0], &event, _NTO_INTR_FLAGS_TRK_MSK );
-	if( hc->hc_iid == -1 ) {
+	SIGEV_PULSE_INIT( &event, hc->hc_coid, SDIO_PRIORITY, HC_EV_INTR, NULL );
+	if( ( hc->hc_iid = InterruptAttachEvent( cfg->irq[0], &event, _NTO_INTR_FLAGS_TRK_MSK ) ) == -1 ) {
 		sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, 1, 1, "%s: InterrruptAttachEvent (irq 0x%x) - %s", __FUNCTION__, cfg->irq[0], strerror( errno ) );
 		sdhci_dinit( hc );
 		return( errno );
@@ -1513,4 +1321,10 @@ int sdhci_init( sdio_hc_t *hc )
 	return( EOK );
 }
 
+#endif
+
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/devb/sdmmc/sdiodi/hc/sdhci.c $ $Rev: 928388 $")
 #endif

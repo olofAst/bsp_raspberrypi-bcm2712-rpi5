@@ -1,25 +1,4 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC:
  * Copyright 2014, QNX Software Systems.
  *
@@ -40,7 +19,7 @@
  * $
  */
 
-#include <startup.h>
+#include "startup.h"
 #include <aarch64/mmu.h>
 
 /*
@@ -93,7 +72,7 @@ set_pte(paddr_t paddr, int flags)
 		}
 	}
 	if(meltdown_active > 0) {
-		// can't use global descriptors with the meltdown fix
+		// can't use global descriptors with the meltdown workaround
 		pte |= AARCH64_PTE_nG;
 	}
 	return pte;
@@ -146,7 +125,7 @@ aarch64_map_init(void)
 	L1_ttbr1 = PTP_PTR(L1pte);
 	L1_ttbr1[__L1_L1_IDX] = L1pte;
 
-	if(!USE_LARGE_PAGE()) {
+       if(!USE_LARGE_PAGE()) {
 		/*
 		 * default 4K page size.
 		 * Allocate L2 table for startup mappings (syspage, callouts etc.)
@@ -167,21 +146,17 @@ aarch64_map_init(void)
 	/*
 	 * Allocate L1 tables used to map each cpu's system address space.
 	 * T1SZ, bits [21:16], The region size is 2^(64-T1SZ) bytes, 39/42 bits per slot.
-	 * Slot 1 is for the kernel.
-	 * Slot 0 is the message passing window.
-	 * The physical address for each table must be 64 byte aligned.
+	 * the last slot (nxfer_slots - 1) is for kernel slots.
+	 * slot 0 to nxfer_slots -2 is for message passsing.
 	 */
-	size_t const l0_size_per_cpu = 64;
-	size_t const l0_slots_per_cpu = l0_size_per_cpu / sizeof(ptp_t);
-	size_t l0size = l0_size_per_cpu * PROCESSORS_MAX;
+	size_t l0size = nxfer_slots * sizeof(pte_t) * PROCESSORS_MAX;
 	l0size = ROUNDPG(l0size);
 	L0_paddr = calloc_ram(l0size, __PAGESIZE);
 	L0_vaddr = aarch64_map(~0, L0_paddr, l0size, PROT_READ|PROT_WRITE);
-
 	for (L0 = (ptp_t *)L0_paddr, i = 0; i < PROCESSORS_MAX; i++) {
 		ttbr1[i] = (unsigned long)L0;
-		L0[1] = L1pte;
-		L0 += l0_slots_per_cpu;
+		L0[nxfer_slots -1] = L1pte;
+		L0 += nxfer_slots;
 	}
 }
 
@@ -368,3 +343,10 @@ elf_vaddr_to_paddr(uintptr_t vaddr)
 	const uintptr_t l3off = (USE_LARGE_PAGE()) ? __L3_VOFF_64K(vaddr) : __L3_VOFF(vaddr);
 	return (PTP_PADDR(pa) | l3off);
 };
+
+
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/startup/lib/aarch64/aarch64_map.c $ $Rev: 931478 $")
+#endif

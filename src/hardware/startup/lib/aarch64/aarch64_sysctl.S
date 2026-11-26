@@ -1,25 +1,4 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC:
  * Copyright 2017, QNX Software Systems.
  *
@@ -43,10 +22,7 @@
      .text
     .align  2
 
-    .globl aarch64_dcache_flush_va
     .globl aarch64_enable_mmu
-    .globl aarch64_enable_mmu_4k
-    .globl aarch64_enable_mmu_64k
     .globl aarch64_disable_mmu
     .globl aarch64_alignment_check_enable
     .globl aarch64_alignment_check_disable
@@ -54,26 +30,6 @@
     .globl aarch64_dcache_disable
     .globl aarch64_icache_enable
     .globl aarch64_icache_disable
-
-/*
- * Flush cached data to memory and invalidate.
- *  x0 - start vaddr
- *  x1 - length to flush/invalidate
- */
-aarch64_dcache_flush_va:
-    mrs     x3, ctr_el0
-    lsr     x3, x3, #16
-    and     x3, x3, #0xf // DminLine
-    mov     x2, #4
-    lsl     x2, x2, x3   // 1<<(DminLine+2), min data cache line size in bytes
-1:  dc      civac, x0
-    add     x0, x0, x2
-    subs    x1, x1, x2
-    bgt     1b
-    dsb     sy
-
-    ret
-
 
 aarch64_alignment_check_enable:
     sub     sp, sp, #16
@@ -108,7 +64,6 @@ aarch64_dcache_enable:
     ic      iallu
     tlbi    vmalle1
     dsb     sy
-    isb
 
     mrs     x0, sctlr_el1
     orr     x0, x0, #(1 << 2)
@@ -133,7 +88,6 @@ aarch64_dcache_disable:
     ic      iallu
     tlbi    vmalle1
     dsb     sy
-    isb
 
     b       done
 
@@ -148,7 +102,6 @@ aarch64_icache_enable:
     ic      iallu
     tlbi    vmalle1
     dsb     sy
-    isb
 
     mrs     x0, sctlr_el1
     orr     x0, x0, #(1 << 12)
@@ -173,41 +126,27 @@ aarch64_icache_disable:
     ic      iallu
     tlbi    vmalle1
     dsb     sy
-    isb
 
     b       done
 
+
 aarch64_enable_mmu:
-aarch64_enable_mmu_64k:
-    // 64k pages TCR_EL1 Configuration
-    mov     x1, #22             // 42 bits virtual address
-    orr     x1, x1, #1 << 14    // AARCH64_TCR_EL1_TG0_64K
-    b       1f
-
-aarch64_enable_mmu_4k:
-    // 4k pages TCR_EL1 Configuration
-    mov     x1, #25             // 39 bits virtual address
-//  orr     x1, x1, #0 << 14    // AARCH64_TCR_EL1_TG0_4K
-
-1:
     sub     sp, sp, #16
     stp     x19, x30, [sp]
 
     // Check if MMU is already enabled
-    mrs     x2, sctlr_el1
-    tbnz    x2, #0, done
+    mrs     x1, sctlr_el1
+    tbnz    x1, #0, done
 
     // Set Translate Table Base
     msr     ttbr0_el1, x0
 
-    // Common TCR_EL1 Configuration
-    mrs     x2, id_aa64mmfr0_el1
-    and     x2, x2, #7          // MMFR0_PARANGE
-    orr     x1, x1, x2, lsl #32 // max physical address size for IPS
-    orr     x1, x1, #3 << 12    // AARCH64_TCR_EL1_SH0_ISH
+    // TCR_EL1 Configuration
+    mov     x1, #22             // 42 bits virtual address
+    orr     x1, x1, #1 << 14    // AARCH64_TCR_EL1_TG0_64K
     orr     x1, x1, #1 << 10    // AARCH64_TCR_EL1_ORGN0_WBWA
     orr     x1, x1, #1 << 8     // AARCH64_TCR_EL1_IRGN0_WBWA
-    orr     x1, x1, #1 << 23    // AARCH64_TCR_EL1_EPD1
+    orr     x1, x1, #3 << 32    // 42 bits physical address
     msr     tcr_el1, x1
 
     /*
@@ -254,9 +193,16 @@ aarch64_disable_mmu:
     ic      iallu
     tlbi    vmalle1
     dsb     sy
-    isb
 
 done:
     ldp     x19, x30, [sp]
     add     sp, sp, #16
     ret
+
+#ifdef __QNXNTO__
+#ifdef __USESRCVERSION
+.section .ident, "SM",%progbits,1;
+.asciz "$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/startup/lib/aarch64/aarch64_sysctl.S $ $Rev: 829897 $";
+.previous
+#endif
+#endif

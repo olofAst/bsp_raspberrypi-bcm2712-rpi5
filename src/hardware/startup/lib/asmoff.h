@@ -1,25 +1,4 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC:
  * Copyright 2008, QNX Software Systems.
  *
@@ -51,7 +30,8 @@
 #include <sys/fault.h>
 #include <sys/syspage.h>
 #include <hw/8250.h>
-#include <startup.h>
+#include <hw/zscc.h>
+#include "startup.h"
 
 /*
 	This source file isn't included in the startup library.
@@ -60,7 +40,11 @@
 	CPU independent definitions
 */
 
-VALUE(QT_TIMER_PERIOD,		offsetof(struct qtime_entry, timer_period));
+VALUE(QT_TIMER_RATE,		offsetof(struct qtime_entry, timer_rate));
+VALUE(QT_TIMER_LOAD,		offsetof(struct qtime_entry, timer_load));
+#if defined(QTIME_HAS_TIMER_LOAD_HI)
+VALUE(QT_TIMER_LOAD_HI,		offsetof(struct qtime_entry, timer_load_hi));
+#endif
 
 VALUE(MS_SYNC,				MS_SYNC);
 VALUE(MS_ASYNC,				MS_ASYNC);
@@ -74,6 +58,10 @@ VALUE(REG_LS,				REG_LS);
 VALUE(LSR_RXRDY,			LSR_RXRDY);
 VALUE(LSR_TXRDY,			LSR_TXRDY);
 VALUE(LSR_BI,				LSR_BI);
+
+VALUE(SCC_RR0_TX_EMPTY,		SCC_RR0_TX_EMPTY);
+VALUE(SCC_RR0_RX_AVAILABLE,	SCC_RR0_RX_AVAILABLE);
+VALUE(SCC_RR0_BREAK,		SCC_RR0_BREAK);
 
 VALUE(DDI_BASE,				offsetof(chip_info, base));
 VALUE(DDI_SHIFT,			offsetof(chip_info,shift));
@@ -95,6 +83,11 @@ VALUE(SYSPAGE_SMP,			offsetof(struct syspage_entry, smp));
 VALUE(SMP_START_ADDR,		offsetof(struct smp_entry, start_addr));
 VALUE(SMP_PENDING,			offsetof(struct smp_entry, pending));
 
+VALUE(SYSPAGE_PMINFO,		offsetof(struct syspage_entry, pminfo));
+VALUE(PMINFO_WAKEUP_PENDING,offsetof(struct pminfo_entry, wakeup_pending));
+VALUE(PMINFO_WAKEUP_CONDITION,offsetof(struct pminfo_entry, wakeup_condition));
+VALUE(PMINFO_MANAGED_STORAGE,offsetof(struct pminfo_entry, managed_storage));
+
 VALUE(SIGBUS,				SIGBUS);
 VALUE(BUS_ADRERR,			BUS_ADRERR);
 VALUE(BUS_OBJERR,			BUS_OBJERR);
@@ -105,4 +98,9 @@ VALUE(DEBUG_WATCHDOG_STOP,	DEBUG_WATCHDOG_STOP);
 VALUE(DEBUG_WATCHDOG_CONTINUE,	DEBUG_WATCHDOG_CONTINUE);
 VALUE(DEBUG_WATCHDOG_FEED,	DEBUG_WATCHDOG_FEED);
 
-/* __SRCVERSION("asmoff.h $Rev: 984579 $"); */
+/* __SRCVERSION("asmoff.h $Rev: 864619 $"); */
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/startup/lib/asmoff.h $ $Rev: 864619 $")
+#endif

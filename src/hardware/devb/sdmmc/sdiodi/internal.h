@@ -1,27 +1,6 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC:
- * Copyright (c) 2007,2008,2024, BlackBerry Limited. All rights reserved.
+ * Copyright 2007, 2008, QNX Software Systems.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"). You
  * may not reproduce, modify or distribute this software except in
@@ -57,10 +36,9 @@
 
 #include <pci/pci.h>
 
-#define _SLOGC_SDIODI					(_SLOGC_SIM_MMC)
+#define _SLOGC_SDIODI					_SLOGC_SIM_MMC
 
 //#define SDIO_UC_SUPPORT				// enable once we get a card to test
-//#define SDIO_APP_SPEC_FCN_EXT			// enable after we get a card to test
 
 //#define SDIO_TRACE
 #define SDIO_TRACE_EVENT				1
@@ -69,7 +47,7 @@
 #define SDIO_DEVICE_ID_WILDCARD			0xffff
 
 #define SDIO_PRIORITY					21
-#define SDIO_INVALID_NUM				(-0xBAD1)
+#define SDIO_INVALID_NUM				-0xBAD1
 #define SDIO_STACK_SIZE					32768//16384
 #define SDIO_TSTATE_CREATING			0x00
 #define SDIO_TSTATE_INITIALIZED			0x01
@@ -91,6 +69,11 @@
 #define SDIO_BLKSZ_4K					4096
 #define SDIO_CLK_INIT					400000
 #define SDIO_TIMEOUT_MS_TO_NS( _to )	( (uint64_t)( _to ) * 1000LL * 1000LL )
+
+#define SDIO_ARG_VAL( _o, _v, _s ) if( (_v) == NULL || *(_v) == '\0' ) { sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, 1, 1, "%s:  Missing argument for '%s'", __FUNCTION__, _o ); (_s) = EINVAL; break; }
+#define SDIO_ARG_NOVAL( _o, _v ) if( (_v) != NULL ) { sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, 1, 1, "%s:  Unexpected argument for '%s'", __FUNCTION__, _o ); break; }
+#define SDIO_ARG_NUMBER( _o, _n, _f ) if( ( *(_n) = (_f)) == -1 ) { sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, 1, 1, "%s:  Invalid numeric argument for '%s'", __FUNCTION__, _o ); break; }
+#define SDIO_ARG_MISSING( _o, _a ) if( !(_a) ) { sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, 1, 1, "%s:  Missing argument component for '%s'", __FUNCTION__, _o ); break; }
 
 #define SDIO_CHK_GEN( _d )		( (_d)->instance.generation != (_d)->hc->generation )
 
@@ -135,7 +118,7 @@ struct _sdio_vendor {
 	sdio_product_t	*chipsets;
 };
 
-#define DEV_ERRATA_WILDCARD		(~0)
+#define DEV_ERRATA_WILDCARD		~0
 
 struct _sdio_device_errata {
 	char		*pnm;
@@ -172,11 +155,9 @@ struct _sdio_wspc {
 	sdio_cmd_t			*cmd;		// active command
 	sdio_sge_t			*sge;
 	_Uint8t				*sga;
-	uint32_t			nsg;
-	uint32_t			sgc;
+	int					nsg;
+	int					sgc;
 };
-
-#define SDIO_HC_ENTRY_NFUNCS      ( ( sizeof( sdio_hc_entry_t ) - offsetof( sdio_hc_entry_t, dinit ) ) / sizeof( void *)  )
 
 struct _sdio_hc_entry {
 	_Uint32t	nentries;
@@ -185,8 +166,7 @@ struct _sdio_hc_entry {
 #define PM_IDLE			0
 #define PM_ACTIVE		1
 #define PM_SLEEP		2
-#define PM_SUSPEND		3
-	int			(*pm)(sdio_hc_t *, uint32_t action);
+	int			(*pm)(sdio_hc_t *, int action);
 	int			(*cmd)(sdio_hc_t *, sdio_cmd_t *);
 	int			(*abort)(sdio_hc_t *, sdio_cmd_t *);
 
@@ -202,17 +182,17 @@ struct _sdio_hc_entry {
 #define CD_WP			0x80		// card write protected
 	int			(*cd)(sdio_hc_t *);
 
-	int			(*pwr)(sdio_hc_t *, uint32_t vdd);
-	int			(*clk)(sdio_hc_t *, uint32_t clk);
+	int			(*pwr)(sdio_hc_t *, int vdd);
+	int			(*clk)(sdio_hc_t *, int clk);
 
 #define BUS_MODE_OPEN_DRAIN		0
 #define BUS_MODE_PUSH_PULL		1
-	int			(*bus_mode)(sdio_hc_t *, uint32_t mode);
+	int			(*bus_mode)(sdio_hc_t *, int mode);
 
 #define BUS_WIDTH_1				1
 #define BUS_WIDTH_4				4
 #define BUS_WIDTH_8				8
-	int			(*bus_width)(sdio_hc_t *, uint32_t width);
+	int			(*bus_width)(sdio_hc_t *, int width);
 
 #define TIMING_HS400			9
 #define TIMING_HS200			8
@@ -223,22 +203,22 @@ struct _sdio_hc_entry {
 #define TIMING_DDR50			3
 #define TIMING_HS				2
 #define TIMING_LS				1
-	int			(*timing)(sdio_hc_t *, uint32_t timing);
+	int			(*timing)(sdio_hc_t *, int timing);
 
 #define SIGNAL_VOLTAGE_3_3		1
 #define SIGNAL_VOLTAGE_3_0		2
 #define SIGNAL_VOLTAGE_1_8		3
 #define SIGNAL_VOLTAGE_1_2		4
-	int			(*signal_voltage)(sdio_hc_t *, uint32_t sv);
+	int			(*signal_voltage)(sdio_hc_t *, int sv);
 
 #define	DRV_TYPE_B				1
 #define	DRV_TYPE_A				2
 #define	DRV_TYPE_C				4
 #define	DRV_TYPE_D				8
-	int			(*drv_type)(sdio_hc_t *, uint32_t type);
-	int			(*driver_strength)(sdio_hc_t *, uint32_t timing, uint32_t type);
-	int			(*tune)(sdio_hc_t *, uint32_t op);
-	int			(*preset)(sdio_hc_t *, uint32_t);
+	int			(*drv_type)(sdio_hc_t *, int type);
+	int			(*driver_strength)(sdio_hc_t *, int timing, int type);
+	int			(*tune)(sdio_hc_t *, int op);
+	int			(*preset)(sdio_hc_t *, int);
 };
 
 struct _sdio_dev {
@@ -271,14 +251,14 @@ struct _sdio_dev {
 
 	_Uint64t				caps;			// see DEV_CAP_xxx
 
-	_Uint32t				ocr;
+	int						ocr;
 
-	_Uint32t				pwd_len;
+	int						pwd_len;
 	_Uint8t					pwd[MMC_LU_PWD_SIZE];
 
-	_Uint32t				pactive;		// active partition
+	int						pactive;		// active partition
 
-	_Uint32t				rca;
+	int						rca;
 
 	sdio_cid_t				cid;
 	sdio_csd_t				csd;
@@ -287,15 +267,10 @@ struct _sdio_dev {
 	sd_sds_t				sds;
 	sd_switch_cap_t			swcaps;
 
-	_Uint32t				pwr_mgnt_fcn_rsa;	// power managment function regester set address
-	_Uint32t				perf_enh_fcn_rsa;	// performance enhancement function regester set address
-
 	_Uint32t				block_length;
 
 	_Uint32t				wp_size;
 	_Uint32t				erase_size;
-
-	_Uint32t				rel_wr_sec_c;
 
 	_Uint32t				raw_cid[SDIO_CID_SIZE];
 	_Uint32t				raw_csd[SDIO_CSD_SIZE];
@@ -308,21 +283,21 @@ struct _sdio_hc_cfg {
 	char				name[SDIO_NAME_MAX];
 
 	_Uint32t			flags;
-	int					verbosity;
+	_Uint32t			verbosity;
 
 	_Uint64t			caps;
 
-	_Uint16t			vid;
-	_Uint16t			did;
-	_Uint32t			class;
+	int					vid;
+	int					did;
+	int					class;
 	int					idx;
 
-	uint32_t			sg_max;
+	int					sg_max;
 
-	uint32_t			clk;
+	int					clk;
 
-	uint32_t			bus_width;
-	uint32_t			timing;
+	int					bus_width;
+	int					timing;
 
 #define SDIO_MAX_IRQ		4
 	int					irqs;
@@ -353,7 +328,7 @@ struct _sdio_hc_cfg {
 	_Uint32t			idle_time;		// time in ms
 	_Uint32t			sleep_time;		// time in ms
 
-	char				*options;		// board specific options
+	char				*options;			// board specific options
 	char				*hsoptions;		// host specific options
 };
 
@@ -386,7 +361,7 @@ struct _sdio_hc {							// Host Controller
 	_Uint32t			state;
 
 	_Uint32t			usage;
-	int					priority;
+	_Uint32t			priority;
 
 	_Uint32t			generation;
 
@@ -401,7 +376,61 @@ struct _sdio_hc {							// Host Controller
 #define	HC_FLAG_SKIP_PWRUP			( 1 << 7 )
 	_Uint32t			flags;
 
-	_Uint64t			caps;				// Capabilities, see HC_CAP_xxx
+#define	HC_CAP_SLOT_TYPE_EMBEDDED	(1 << 0)	// embedded card
+#define	HC_CAP_PIO					(1 << 1)	// supports PIO
+#define	HC_CAP_DMA					(1 << 2)	// supports DMA 32 bit address
+#define	HC_CAP_DMA64				(3 << 2)	// supports DMA 64 bit address
+#define	HC_CAP_DMA_MSK				(HC_CAP_DMA | HC_CAP_DMA64)
+#define	HC_CAP_BW4					(1 << 4)	// 4 bit bus supported
+#define	HC_CAP_BW8					(1 << 5)	// 8 bit bus supported
+#define HC_CAP_BW_MSK				( HC_CAP_BW4 | HC_CAP_BW8 )
+#define	HC_CAP_ACMD12				(1 << 6)	// auto stop cmd(12) supported
+#define	HC_CAP_ACMD23				(1 << 7)	// auto set block count cmd(23) supported
+#define HC_CAP_SLEEP				(1 << 8)
+
+#define	HC_CAP_HS				(1 << 9)	// High speed device supported
+#define	HC_CAP_SDR12				(1 << 10)
+#define	HC_CAP_SDR25				(1 << 11)
+#define	HC_CAP_SDR50				(1 << 12)
+#define	HC_CAP_SDR104				(1 << 13)
+#define	HC_CAP_DDR50				(1 << 14)	// Dual Data Rate supported
+#define HC_CAP_UHS( _caps )			( (_caps) & ( HC_CAP_SDR12 | HC_CAP_SDR25 | \
+								HC_CAP_SDR50 | HC_CAP_SDR104 | HC_CAP_DDR50) )
+#define	HC_CAP_HS200				(1 << 15)
+#define	HC_CAP_HS400				(1 << 16)
+#define HC_CAP_TIMING_MSK			( HC_CAP_HS | HC_CAP_DDR50 |		\
+										HC_CAP_SDR12 | HC_CAP_SDR25 |	\
+										HC_CAP_SDR50 | HC_CAP_SDR104 |	\
+										HC_CAP_HS200 | HC_CAP_HS400 | HC_CAP_HS400ES)
+
+#define	HC_CAP_XPC_3_3V				(1 << 17)	// > 150mA at 3.3V is supported
+#define	HC_CAP_XPC_3_0V				(1 << 18)	// > 150mA at 3.0V is supported
+#define	HC_CAP_XPC_1_8V				(1 << 19)	// > 150mA at 1.8V is supported
+#define HC_CAP_XPC( _caps )			( ( ( _caps ) >> 16 ) & 0x07 )
+
+#define	HC_CAP_200MA 				(1 << 20)	// 200mA at 1.8V
+#define	HC_CAP_400MA 				(1 << 21)	// 400mA at 1.8V
+#define	HC_CAP_600MA 				(1 << 22)	// 600mA at 1.8V
+#define	HC_CAP_800MA 				(1 << 23)	// 800mA at 1.8V
+#define HC_CAP_CURRENT( _caps )		( ( ( ( _caps ) >> 19 ) ) & 0x0f )
+
+#define	HC_CAP_DRV_TYPE_B			(1 << 24)
+#define	HC_CAP_DRV_TYPE_A			(1 << 25)
+#define	HC_CAP_DRV_TYPE_C			(1 << 26)
+#define	HC_CAP_DRV_TYPE_D			(1 << 27)
+#define	HC_CAP_DRV_TYPES( _caps )	( ( ( ( _caps ) >> 24 ) ) & 0x0f )
+
+
+#define HC_CAP_SV( _caps )			( ( ( ( _caps ) >> 28 ) ) & 0x0f )
+#define HC_CAP_SV_1_2V				(1 << 28)	// 1.2V signal voltage supported
+#define HC_CAP_SV_1_8V				(1 << 29)	// 1.8V signal voltage supported
+#define HC_CAP_SV_3_0V				(1 << 30)	// 3.0V signal voltage supported
+#define HC_CAP_SV_3_3V				(1LL << 31)	// 3.3V signal voltage supported
+
+#define	HC_CAP_CD_INTR				(1LL << 32)	// card detect interrupt supported
+#define HC_CAP_BSY					(1LL << 33)	// card detect busy supported
+#define	HC_CAP_HS400ES				(1LL << 34)	// hs400 enhanced strobe
+	_Uint64t			caps;				// Capabilities
 
 	_Uint32t			version;
 
@@ -452,7 +481,7 @@ struct _sdio_ctrl {
 #define SDIO_CFLAG_SCAN			0x1
 	_Uint32t					flags;
 	_Uint32t					state;
-	int							priority;
+	_Uint32t					priority;
 	int							verbosity;
 
 #define SDIO_HC_MAX			8
@@ -491,7 +520,6 @@ struct sdio_device {
 extern sdio_ctrl_t			sdio_ctrl;
 extern const uint8_t		sdio_tbp_4bit[];
 extern const uint8_t		sdio_tbp_8bit[];
-extern sdio_vendor_t		sdio_vendors[];
 
 extern int fls( int val );
 extern int sdio_options( sdio_hc_t *hc, char *options );
@@ -500,55 +528,54 @@ extern ssize_t __attribute__((__format__(__printf__, 5, 6)))sdio_slogf( int opco
 extern int sdio_timer_settime( int tid, uint32_t sec, uint32_t nsec, int repeat );
 extern int sdio_set_thread_state( uint32_t *tstate, int state );
 extern int sdio_create_thread( pthread_t *tid, pthread_attr_t *aattr, void *(*func)(void *), void *arg, int priority, uint32_t *tstate, char *name );
-extern int sdio_sg_start( sdio_hc_t *hc, sdio_sge_t *sge, uint32_t nsg );
-extern int sdio_sg_nxt( sdio_hc_t *hc, _Uint8t **addr, uint32_t *len, uint32_t blksz );
+extern int sdio_sg_start( sdio_hc_t *hc, sdio_sge_t *sge, int nsg );
+extern int sdio_sg_nxt( sdio_hc_t *hc, _Uint8t **addr, int *len, int blksz );
 extern int sdio_vtop_sg( sdio_sge_t *vsg, sdio_sge_t *psg, int sgc, void *mhdl );
 extern paddr64_t sdio_vtop( void *vaddr );
 extern uint32_t sdio_extract_bits( uint32_t *data, int bits, int start, int size );
 extern sdio_hc_t *sdio_hc_alloc( void );
 extern int sdio_hc_free( sdio_hc_t *hc );
 extern int sdio_hc_getsubopt( char **optionp, char * const *tokens, char **valuep );
-extern sdio_product_t *sdio_hc_lookup( uint16_t vid, uint16_t did, uint32_t class, char *name );
+extern sdio_product_t *sdio_hc_lookup( int vid, int did, int class, char *name );
 extern int sdio_reconcile_errata( sdio_dev_t *dev, sdio_device_errata_t *errata );
 extern sdio_device_errata_t *sdio_device_errata( sdio_dev_t *dev, sdio_device_errata_t *erratas );
 
 extern int sdio_go_idle( sdio_hc_t *hc );
-extern int sdio_select_card( sdio_dev_t *dev, uint32_t rca );
+extern int sdio_select_card( sdio_dev_t *dev, int rca );
 extern int sdio_send_csd( sdio_dev_t *dev, uint32_t *csd );
 extern int sdio_all_send_cid( sdio_hc_t *hc, uint32_t *cid );
 
-extern int sdio_clock( sdio_hc_t *hc, uint32_t clk );
-extern int sdio_tune( sdio_hc_t *hc, uint32_t cmd );
-extern int sdio_preset( sdio_hc_t *hc, uint32_t state );
-extern int sdio_timing( sdio_hc_t *hc, uint32_t timing );
-extern int sdio_bus_mode( sdio_hc_t *hc, uint32_t bus_mode );
-extern int sdio_bus_width( sdio_hc_t *hc, uint32_t bus_width );
-extern int sdio_drv_type( sdio_hc_t *hc, uint32_t drv_type );
-extern int sdio_select_voltage( sdio_hc_t *hc, uint32_t ocr );
-extern int sdio_signal_voltage( sdio_hc_t *hc, uint32_t voltage );
+extern int sdio_clock( sdio_hc_t *hc, int clk );
+extern int sdio_tune( sdio_hc_t *hc, int cmd );
+extern int sdio_preset( sdio_hc_t *hc, int state );
+extern int sdio_timing( sdio_hc_t *hc, int timing );
+extern int sdio_bus_mode( sdio_hc_t *hc, int bus_mode );
+extern int sdio_bus_width( sdio_hc_t *hc, int bus_width );
+extern int sdio_drv_type( sdio_hc_t *hc, int drv_type );
+extern int sdio_select_voltage( sdio_hc_t *hc, int ocr );
+extern int sdio_signal_voltage( sdio_hc_t *hc, int voltage );
 extern int sdio_wait_cmd( sdio_hc_t *hc, struct sdio_cmd *cmd, uint64_t tms );
 extern int sdio_issue_cmd( sdio_dev_t *dev, struct sdio_cmd *cmd, uint64_t tms );
 
 extern int _sdio_disconnect( void );
 extern int _sdio_reset( sdio_dev_t *dev );
 extern int _sdio_bus_error( sdio_dev_t *dev );
-extern int _sdio_pwrmgnt( sdio_dev_t *dev, uint32_t pm );
+extern int _sdio_pwrmgnt( sdio_dev_t *dev, int pm );
 extern int _sdio_retune( sdio_hc_t *hc );
-extern int _sdio_set_block_count( sdio_dev_t *dev, uint32_t blkcnt, uint32_t flgs );
-extern int _sdio_set_block_length( sdio_dev_t *dev, uint32_t blklen );
+extern int _sdio_set_block_count( sdio_dev_t *dev, int blkcnt, uint32_t flgs );
+extern int _sdio_set_block_length( sdio_dev_t *dev, int blklen );
 extern int _sdio_stop_transmission( sdio_dev_t *dev, int hpi );
 extern int _sdio_send_status( sdio_dev_t *dev, uint32_t *rsp, int hpi );
 extern int _sdio_send_cmd( sdio_dev_t *dev, struct sdio_cmd *cmd,
 		void (*func)( struct sdio_device *, sdio_cmd_t *, void *),
 		uint32_t timeout, int retries );
 extern int _sdio_connect( sdio_connect_parm_t *parm, struct sdio_connection **connection );
-extern int _sdio_lock_unlock( sdio_dev_t *dev, int op, uint8_t *pwd, uint32_t pwd_len );
+extern int _sdio_lock_unlock( sdio_dev_t *dev, int op, uint8_t *pwd, int pwd_len );
 extern int _sdio_wait_card_status( sdio_dev_t *dev, uint32_t *rsp, uint32_t mask, uint32_t val, uint32_t msec );
-extern int _sdio_cache( sdio_dev_t *dev, int op, uint32_t timeout );
 
 	// HC callbacks for change detect and cmd completion
 extern int sdio_hc_event( sdio_hc_t *hc, int ev );
-extern int sdio_cmd_cmplt( sdio_hc_t *hc, struct sdio_cmd *cmd, uint32_t status );
+extern int sdio_cmd_cmplt( sdio_hc_t *hc, struct sdio_cmd *cmd, int status );
 // base.c end
 
 // mmc.c
@@ -561,13 +588,12 @@ extern int mmc_send_ext_csd( sdio_dev_t *dev, uint8_t *csd );
 extern int mmc_set_partition( sdio_dev_t *dev, uint32_t partition );
 extern int mmc_cache( sdio_dev_t *dev, int op, uint32_t timeout );
 extern uint64_t mmc_erase_timeout( sdio_dev_t *dev, uint32_t etype, uint64_t nlba );
-extern int mmc_erase( sdio_dev_t *dev, uint32_t partition, uint32_t flgs, uint64_t lba, uint32_t nlba );
+extern int mmc_erase( sdio_dev_t *dev, int partition, int flgs, uint64_t lba, int nlba );
 extern int mmc_write_protect( sdio_dev_t *dev, int op, int ptype, int mode, uint32_t lba, uint32_t nlba );
 extern int mmc_switch( sdio_dev_t *dev, uint32_t cmdset, uint32_t mode, uint32_t index, uint32_t value, uint32_t timeout );
-extern int mmc_rpmb_rw( sdio_dev_t *dev, void *pf, uint32_t nf, uint32_t flgs );
-extern int mmc_gen_man_cmd( sdio_dev_t *dev, uint8_t op, void *buf, uint32_t blklen, uint32_t blkcnt, uint32_t arg, uint32_t flgs);
+extern int mmc_rpmb_rw( sdio_dev_t *dev, void *pf, int nf, int flgs );
+extern int mmc_gen_man_cmd( sdio_dev_t *dev, uint8_t op, void *buf, int blklen, int blkcnt, uint32_t arg, uint32_t flgs);
 extern int mmc_retune( sdio_hc_t *hc );
-extern int mmc_pwroff_notify( sdio_dev_t *dev, int op, int timeout );
 // mmc.c end
 
 // sd.c
@@ -577,11 +603,9 @@ extern int sd_bus_error( sdio_dev_t *dev );
 extern int sd_app_cmd( sdio_dev_t *dev );
 extern int sd_send_if_cond( sdio_hc_t *hc, uint32_t vhs );
 extern uint64_t sd_erase_timeout( sdio_dev_t *dev, uint32_t etype, uint32_t nlba );
-extern int sd_erase( sdio_dev_t *dev, uint32_t flgs, uint64_t lba, uint32_t nlba );
+extern int sd_erase( sdio_dev_t *dev, int flgs, uint64_t lba, int nlba );
 extern int sd_switch( sdio_dev_t *dev, int mode, int grp, uint8_t val, uint8_t *switch_status );
-extern int sd_lock_unlock( sdio_dev_t *dev, int action, uint8_t *pwd, uint32_t pwd_len );
-extern int sd_cache( sdio_dev_t *dev, int op, uint32_t timeout );
-extern int sd_pwroff_notify( sdio_dev_t *dev, int op, int timeout );
+extern int sd_lock_unlock( sdio_dev_t *dev, int op, uint8_t *pwd, int pwd_len );
 // sd.c end
 
 // bs.c
@@ -589,7 +613,7 @@ extern int bs_powman( sdio_hc_t *hc, int state );
 extern int bs_pad_conf( sdio_hc_t *hc, int state );
 extern int bs_clock_gate( sdio_hc_t *hc, int op );
 extern int bs_event( sdio_hc_t *hc, sdio_event_t *ev );
-extern int bs_set_ldo( sdio_hc_t *hc, int ldo, uint32_t voltage );
+extern int bs_set_ldo( sdio_hc_t *hc, int ldo, int voltage );
 // bs.c end
 
 // soc.c
@@ -607,6 +631,11 @@ extern int sdio_pci_detach_device( sdio_hc_t *hc );
 
 // libc
 extern uint64_t _syspage_time( clockid_t clock_id );
-// card.c 
-extern int sd_app_sd_status( sdio_dev_t * const dev, uint32_t * const sds );
+
+#endif
+
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/devb/sdmmc/sdiodi/internal.h $ $Rev: 933186 $")
 #endif

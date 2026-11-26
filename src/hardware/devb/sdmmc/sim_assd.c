@@ -1,25 +1,4 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC:
  * Copyright 2014, QNX Software Systems.
  *
@@ -61,7 +40,7 @@
 
 #define ASSD_SS_MCEX				0
 
-static int assd_control_system( SIM_HBA * const hba, int const srcid, int const ssi, int const op )
+static int assd_control_system( SIM_HBA *hba, int srcid, int ssi, int op )
 {
 	SIM_SDMMC_EXT		*ext;
 	struct sdio_device	*dev;
@@ -71,25 +50,25 @@ static int assd_control_system( SIM_HBA * const hba, int const srcid, int const 
 	ext		= (SIM_SDMMC_EXT *)hba->ext;
 	dev		= ext->device;
 
-	status =  sdio_set_block_length( dev, SD_SEC_CMD_SIZE );
-	if( status != EOK ) {
+	if( ( status =  sdio_set_block_length( dev, SD_SEC_CMD_SIZE ) ) ) {
 		return( status );
 	}
 
-	cmd = sdio_alloc_cmd( );
-	if( cmd == NULL ) {
+	if( ( cmd = sdio_alloc_cmd( ) ) == NULL ) {
 		return( ENOMEM );
 	}
 
 	sdio_setup_cmd( cmd, SCF_CTYPE_ADTC | SCF_RSP_R1B, SD_CONTROL_ASSD_SYSTEM, ( srcid << 12 ) | ( ssi << 8 ) | op );
-	status = sdio_send_cmd( dev, cmd, NULL, ASSD_TIME_DEFAULT, 0 );
+	if( ( status = sdio_send_cmd( dev, cmd, NULL, ASSD_TIME_DEFAULT, 0 ) ) == EOK ) {
+
+	}
 
 	sdio_free_cmd( cmd );
 
 	return( status );
 }
 
-static int assd_write_sec_cmd( SIM_HBA * const hba, int const len, const uint8_t * const data, int const timeout )
+static int assd_write_sec_cmd( SIM_HBA *hba, int len, uint8_t *data, int timeout )
 {
 	SIM_SDMMC_EXT		*ext;
 	struct sdio_device	*dev;
@@ -101,16 +80,14 @@ static int assd_write_sec_cmd( SIM_HBA * const hba, int const len, const uint8_t
 	dev		= ext->device;
 
 #ifdef SDMMC_ASSD_DEBUG
-	cam_slogf( _SLOGC_SIM_MMC, _SLOG_INFO, 1, 1, "%s:  ", __FUNCTION__ );
+	cam_slogf( _SLOGC_SIM_MMC, _SLOG_ERROR, 1, 1, "%s:  ", __FUNCTION__ );
 #endif
 
-	status =  sdio_set_block_length( dev, SD_SEC_CMD_SIZE );
-	if( status != EOK ) {
+	if( ( status =  sdio_set_block_length( dev, SD_SEC_CMD_SIZE ) ) ) {
 		return( status );
 	}
 
-	cmd = sdio_alloc_cmd( );
-	if( cmd == NULL ) {
+	if( ( cmd = sdio_alloc_cmd( ) ) == NULL ) {
 		return( ENOMEM );
 	}
 
@@ -118,8 +95,7 @@ static int assd_write_sec_cmd( SIM_HBA * const hba, int const len, const uint8_t
 	sge.sg_count	= SD_SEC_CMD_SIZE;
 	sge.sg_address	= SDIO_DATA_PTR_P( data );
 	sdio_setup_cmd_io( cmd, SCF_DIR_OUT, 1, SD_SEC_CMD_SIZE, &sge, 1, NULL );
-	status = sdio_send_cmd( dev, cmd, NULL, timeout, 0 );
-	if( status == EOK ) {
+	if( ( status = sdio_send_cmd( dev, cmd, NULL, timeout, 0 ) ) == EOK ) {
 		if( ( ext->eflags & SDMMC_EFLAG_ASSD_SEND_STOP ) ) {
 			if( sdio_stop_transmission( dev, 0 ) != EOK ) {
 				ext->eflags &= ~SDMMC_EFLAG_ASSD_SEND_STOP;
@@ -132,7 +108,7 @@ static int assd_write_sec_cmd( SIM_HBA * const hba, int const len, const uint8_t
 	return( status );
 }
 
-static int assd_read_sec_cmd( SIM_HBA * const hba, int const len, const uint8_t * const data, int const timeout )
+static int assd_read_sec_cmd( SIM_HBA *hba, int len, uint8_t *data, int timeout )
 {
 	SIM_SDMMC_EXT		*ext;
 	struct sdio_device	*dev;
@@ -144,16 +120,14 @@ static int assd_read_sec_cmd( SIM_HBA * const hba, int const len, const uint8_t 
 	dev		= ext->device;
 
 #ifdef SDMMC_ASSD_DEBUG
-	cam_slogf( _SLOGC_SIM_MMC, _SLOG_INFO, 1, 1, "%s:  ", __FUNCTION__ );
+	cam_slogf( _SLOGC_SIM_MMC, _SLOG_ERROR, 1, 1, "%s:  ", __FUNCTION__ );
 #endif
 
-	status =  sdio_set_block_length( dev, SD_SEC_CMD_SIZE );
-	if( status != EOK ) {
+	if( ( status =  sdio_set_block_length( dev, SD_SEC_CMD_SIZE ) ) ) {
 		return( status );
 	}
 
-	cmd = sdio_alloc_cmd( );
-	if( cmd == NULL ) {
+	if( ( cmd = sdio_alloc_cmd( ) ) == NULL ) {
 		return( ENOMEM );
 	}
 
@@ -161,8 +135,7 @@ static int assd_read_sec_cmd( SIM_HBA * const hba, int const len, const uint8_t 
 	sge.sg_count	= SD_SEC_CMD_SIZE;
 	sge.sg_address	= SDIO_DATA_PTR_P( data );
 	sdio_setup_cmd_io( cmd, SCF_DIR_IN, 1, SD_SEC_CMD_SIZE, &sge, 1, NULL );
-	status = sdio_send_cmd( dev, cmd, NULL, timeout, 0 );
-	if( status == EOK ) {
+	if( ( status = sdio_send_cmd( dev, cmd, NULL, timeout, 0 ) ) == EOK ) {
 		if( ( ext->eflags & SDMMC_EFLAG_ASSD_SEND_STOP ) ) {
 			if( sdio_stop_transmission( dev, 0 ) != EOK ) {
 				ext->eflags &= ~SDMMC_EFLAG_ASSD_SEND_STOP;
@@ -175,7 +148,7 @@ static int assd_read_sec_cmd( SIM_HBA * const hba, int const len, const uint8_t 
 	return( status );
 }
 
-static int assd_send_psi( SIM_HBA * const hba, int const rid, const uint8_t * const psi )
+static int assd_send_psi( SIM_HBA *hba, int rid, uint8_t *psi )
 {
 	SIM_SDMMC_EXT		*ext;
 	struct sdio_device	*dev;
@@ -187,16 +160,14 @@ static int assd_send_psi( SIM_HBA * const hba, int const rid, const uint8_t * co
 	dev		= ext->device;
 
 #ifdef SDMMC_ASSD_DEBUG
-	cam_slogf( _SLOGC_SIM_MMC, _SLOG_INFO, 1, 1, "%s:  rid %d ", __FUNCTION__, rid );
+	cam_slogf( _SLOGC_SIM_MMC, _SLOG_ERROR, 1, 1, "%s:  rid %d ", __FUNCTION__, rid );
 #endif
 
-	status =  sdio_set_block_length( dev, SD_PSI_SIZE );
-	if( status != EOK ) {
+	if( ( status =  sdio_set_block_length( dev, SD_PSI_SIZE ) ) ) {
 		// apparently some cards fail this, but still work...
 	}
 
-	cmd = sdio_alloc_cmd( );
-	if( cmd == NULL ) {
+	if( ( cmd = sdio_alloc_cmd( ) ) == NULL ) {
 		return( ENOMEM );
 	}
 
@@ -204,7 +175,10 @@ static int assd_send_psi( SIM_HBA * const hba, int const rid, const uint8_t * co
 	sge.sg_count	= SD_PSI_SIZE;
 	sge.sg_address	= SDIO_DATA_PTR_P( psi );
 	sdio_setup_cmd_io( cmd, SCF_DIR_IN, 1, SD_PSI_SIZE, &sge, 1, NULL );
-	status = sdio_send_cmd( dev, cmd, NULL, ASSD_TIME_DEFAULT, 0 );
+	if( ( status = sdio_send_cmd( dev, cmd, NULL, ASSD_TIME_DEFAULT, 0 ) ) == EOK ) {
+
+	}
+
 	sdio_free_cmd( cmd );
 
 	if( ( status =  sdio_set_block_length( dev, 512 ) ) ) {
@@ -214,23 +188,21 @@ static int assd_send_psi( SIM_HBA * const hba, int const rid, const uint8_t * co
 	return( status );
 }
 
-static int assd_status( SIM_HBA * const hba, SDMMC_ASSD_STATUS *as )
+static int assd_status( SIM_HBA *hba, SDMMC_ASSD_STATUS *as )
 {
 	uint8_t				*psi;
 	int					status;
 
 #ifdef SDMMC_ASSD_DEBUG
-	cam_slogf( _SLOGC_SIM_MMC, _SLOG_INFO, 1, 1, "%s:  ", __FUNCTION__ );
+	cam_slogf( _SLOGC_SIM_MMC, _SLOG_ERROR, 1, 1, "%s:  ", __FUNCTION__ );
 #endif
 
-	psi = sdio_alloc( ASSD_STATUS_SIZE );
-	if( psi == NULL ) {
+	if( ( psi = sdio_alloc( ASSD_STATUS_SIZE ) ) == NULL ) {
 		return( ENOMEM );
 	}
 
 		// read status register
-	status = assd_send_psi( hba, SD_PSI_ASSD_SR, psi );
-	if( status == EOK ) {
+	if( ( status = assd_send_psi( hba, SD_PSI_ASSD_SR, psi ) ) == EOK ) {
 		as->assd_state			= psi[0];
 		as->assd_err_state		= psi[1];
 		as->assd_sec_sys_err	= psi[2] >> 7;
@@ -242,12 +214,12 @@ static int assd_status( SIM_HBA * const hba, SDMMC_ASSD_STATUS *as )
 		as->read_block_count	= ( psi[8] << 8 ) | psi[9];
 		as->suspended_sec_sys	= ( psi[10] << 8 ) | psi[11];
 	}
-
+	
 	sdio_free( psi, ASSD_STATUS_SIZE );
 	return( status );
 }
 
-static int assd_properties( SIM_HBA * const hba, SDMMC_ASSD_PROPERTIES *prop )
+static int assd_properties( SIM_HBA *hba, SDMMC_ASSD_PROPERTIES *prop )
 {
 	uint8_t				*psi;
 	int					status;
@@ -255,17 +227,15 @@ static int assd_properties( SIM_HBA * const hba, SDMMC_ASSD_PROPERTIES *prop )
 	status	= EINVAL;
 
 #ifdef SDMMC_ASSD_DEBUG
-	cam_slogf( _SLOGC_SIM_MMC, _SLOG_INFO, 1, 1, "%s:  ", __FUNCTION__ );
+	cam_slogf( _SLOGC_SIM_MMC, _SLOG_ERROR, 1, 1, "%s:  ", __FUNCTION__ );
 #endif
 
-	psi = sdio_alloc( ASSD_STATUS_SIZE );
-	if( psi == NULL ) {
+	if( ( psi = sdio_alloc( ASSD_STATUS_SIZE ) ) == NULL ) {
 		return( ENOMEM );
 	}
-
+	
 		// read properties register
-	status = assd_send_psi( hba, SD_PSI_ASSD_PR, psi );
-	if( status == EOK ) {
+	if( ( status = assd_send_psi( hba, SD_PSI_ASSD_PR, psi ) ) == EOK ) {
 		prop->sec_read_latency			= psi[0];
 		prop->sec_write_latency			= psi[1];
 		prop->assd_version				= psi[2];
@@ -281,12 +251,12 @@ static int assd_properties( SIM_HBA * const hba, SDMMC_ASSD_PROPERTIES *prop )
 		prop->ctrl_sys_bus_busy			= psi[15];
 		prop->suspendible_sec_sys		= ( psi[16] << 8 ) | psi[17];
 	}
-
+	
 	sdio_free( psi, ASSD_STATUS_SIZE );
 	return( status );
 }
 
-static int assd_wait_scc( SIM_HBA * const hba, uint32_t msec )
+static int assd_wait_scc( SIM_HBA *hba, uint32_t msec )
 {
 	uint8_t				*psi;
 	int					status;
@@ -294,33 +264,28 @@ static int assd_wait_scc( SIM_HBA * const hba, uint32_t msec )
 	status	= EOK;
 
 #ifdef SDMMC_ASSD_DEBUG
-	cam_slogf( _SLOGC_SIM_MMC, _SLOG_INFO, 1, 1, "%s:  ", __FUNCTION__ );
+	cam_slogf( _SLOGC_SIM_MMC, _SLOG_ERROR, 1, 1, "%s:  ", __FUNCTION__ );
 #endif
 
-	psi = sdio_alloc( ASSD_STATUS_SIZE );
-	if( psi == NULL ) {
+	if( ( psi = sdio_alloc( ASSD_STATUS_SIZE ) ) == NULL ) {
 		return( ENOMEM );
 	}
 
 	for( msec = max( msec, 1 ); msec; msec-- ) {
-		status = assd_send_psi( hba, SD_PSI_ASSD_SR, psi );
-		if( status != EOK ) {
+		if( ( status = assd_send_psi( hba, SD_PSI_ASSD_SR, psi ) ) != EOK ) {
 			break;
 		}
 
 		if( psi[ASSD_STATE_IDX] == ASSD_STATE_SCC ) {
-			status = EOK;
-			break;
+			status = EOK; break;
 		}
 
 		if( psi[ASSD_STATE_IDX] == ASSD_STATE_SCA ) {
-			status = EIO;
-			break;
+			status = EIO; break;
 		}
 
 		if( ( psi[ASSD_SEC_SYS_ERROR_IDX] & ASSD_SEC_SYS_ERR ) ) {
-			status = EIO;
-			break;
+			status = EIO; break;
 		}
 
 		delay( 1 );
@@ -340,7 +305,7 @@ static int assd_wait_scc( SIM_HBA * const hba, uint32_t msec )
 }
 
 #ifdef SDMMC_ASSD_SWITCH
-static int assd_cmd_sys( SIM_HBA * const hba, int const state )
+static int assd_cmd_sys( SIM_HBA *hba, int state )
 {
 	SIM_SDMMC_EXT		*ext;
 	struct sdio_device	*dev;
@@ -353,8 +318,7 @@ static int assd_cmd_sys( SIM_HBA * const hba, int const state )
 	idx		= 0;
 
 	if( state ) {
-		status = sdio_sd_switch( dev, SD_SF_MODE_CHECK, SD_SF_GRP_CMD_EXT, SD_SF_CUR_FCN, ss );
-		if( status != EOK ) {
+		if( ( status = sdio_sd_switch( dev, SD_SF_MODE_CHECK, SD_SF_GRP_CMD_EXT, SD_SF_CUR_FCN, ss ) ) != EOK ) {
 			return( status );
 		}
 
@@ -366,8 +330,7 @@ static int assd_cmd_sys( SIM_HBA * const hba, int const state )
 		idx = ffs( ss[11] & ( SD_CMD_SYS_EC | SD_CMD_SYS_ASSD ) ) - 1;
 	}
 
-	status = sdio_sd_switch( dev, SD_SF_MODE_SET, SD_SF_GRP_CMD_EXT, idx, ss );
-	if( status == EOK ) {
+	if( ( status = sdio_sd_switch( dev, SD_SF_MODE_SET, SD_SF_GRP_CMD_EXT, idx, ss ) ) == EOK ) {
 		if( ( ( ss[16] >> 4 ) & 0x0F ) != idx ) {
 			status = EIO;
 		}
@@ -377,7 +340,7 @@ static int assd_cmd_sys( SIM_HBA * const hba, int const state )
 }
 #endif
 
-static int assd_state( SIM_HBA * const hba, int const reinit )
+static int assd_state( SIM_HBA *hba, int reinit )
 {
 	SIM_SDMMC_EXT		*ext;
 	SDMMC_ASSD_STATUS	as;
@@ -396,21 +359,19 @@ static int assd_state( SIM_HBA * const hba, int const reinit )
 	}
 
 #ifdef SDMMC_ASSD_SWITCH
-	status = assd_cmd_sys( hba, CAM_TRUE );
-	if( status != EOK ) {
+	if( ( status = assd_cmd_sys( hba, CAM_TRUE ) ) != EOK ) {
 		return( status );
 	}
 #endif
 
 	if( !reinit ) {
-		status = assd_properties( hba, &ext->assd_properties );
+		if( ( status = assd_properties( hba, &ext->assd_properties ) ) == EOK ) {
+		}
 	}
 
 	if( ext->assd_active_sec_sys != -1 ) {
-		status = assd_control_system( hba, 0, ext->assd_active_sec_sys, SDMMC_AC_OP_SELECT_RESET );
-		if( status == EOK ) {
-			status = assd_status( hba, &as );
-			if( status == EOK ) {
+		if( ( status = assd_control_system( hba, 0, ext->assd_active_sec_sys, SDMMC_AC_OP_SELECT_RESET ) ) == EOK ) {
+			if( ( status = assd_status( hba, &as ) ) == EOK ) {
 				if( ext->assd_active_sec_sys != as.active_sec_system ) {
 					status = EIO;
 				}
@@ -425,16 +386,16 @@ static int assd_state( SIM_HBA * const hba, int const reinit )
 	return( status );
 }
 
-int sdmmc_assd_control_devctl( SIM_HBA * const hba, CCB_DEVCTL *ccb )
+int sdmmc_assd_control_devctl( SIM_HBA *hba, CCB_DEVCTL *ccb )
 {
 	SIM_SDMMC_EXT			*ext;
 	SDMMC_ASSD_STATUS		as;
 	SDMMC_ASSD_CONTROL		*ctrl;
-	const SDMMC_ASSD_PROPERTIES	*prop;
+	SDMMC_ASSD_PROPERTIES	*prop;
 	int						status;
 
 	ext		= (SIM_SDMMC_EXT *)hba->ext;
-	ctrl	= ccb->cam_devctl_data;
+	ctrl	= (SDMMC_ASSD_CONTROL *)ccb->cam_devctl_data;
 	prop	= &ext->assd_properties;
 	status	= EINVAL;
 
@@ -443,8 +404,7 @@ int sdmmc_assd_control_devctl( SIM_HBA * const hba, CCB_DEVCTL *ccb )
 		return( CAM_REQ_CMP );
 	}
 
-	status = assd_state( hba, CAM_TRUE );
-	if( status != EOK ) {
+	if( ( status = assd_state( hba, CAM_TRUE ) ) ) {
 		ccb->cam_devctl_status = status;
 		return( CAM_REQ_CMP );
 	}
@@ -473,8 +433,7 @@ int sdmmc_assd_control_devctl( SIM_HBA * const hba, CCB_DEVCTL *ccb )
 			}
 			break;
 #else
-			status = EINVAL;
-			break;
+			status = EINVAL; break;
 #endif
 
 		case SDMMC_AC_OP_CLEAR_SUSPEND:
@@ -496,32 +455,23 @@ int sdmmc_assd_control_devctl( SIM_HBA * const hba, CCB_DEVCTL *ccb )
 			}
 			break;
 #else
-			status = EINVAL;
-			break;
+			status = EINVAL; break;
 #endif
 
 		case SDMMC_AC_OP_SELECT_RESET:
 			if( prop->assd_version < ASSD_SPEC_A1_V2 ) {
 				if( ctrl->sec_sys_idx != ASSD_SS_MCEX ) {
-					status = EINVAL;
-					break;
+					status = EINVAL; break;
 				}
 			}
 			else if( !( prop->assd_sec_sys & ( 1 << ctrl->sec_sys_idx ) ) ) {
-				status = EINVAL;
-				break;
-			}
-			else {
-				// nothing
+				status = EINVAL; break;
 			}
 
-			status = assd_control_system( hba, 0, ctrl->sec_sys_idx, ctrl->operation );
-			if( status == EOK ) {
-				status = assd_status( hba, &as );
-				if( status == EOK ) {
+			if( ( status = assd_control_system( hba, 0, ctrl->sec_sys_idx, ctrl->operation ) ) == EOK ) {
+				if( ( status = assd_status( hba, &as ) ) == EOK ) {
 					if( ctrl->sec_sys_idx != as.active_sec_system ) {
-						status = EIO;
-						break;
+						status = EIO; break;
 					}
 					else {
 						ext->assd_active_sec_sys = as.active_sec_system;
@@ -532,8 +482,7 @@ int sdmmc_assd_control_devctl( SIM_HBA * const hba, CCB_DEVCTL *ccb )
 			break;
 
 		default:
-			status = EINVAL;
-			break;
+			status = EINVAL; break;
 	}
 
 	ccb->cam_devctl_status = status;
@@ -541,16 +490,15 @@ int sdmmc_assd_control_devctl( SIM_HBA * const hba, CCB_DEVCTL *ccb )
 	return( CAM_REQ_CMP );
 }
 
-int sdmmc_assd_status_devctl( SIM_HBA * const hba, CCB_DEVCTL *ccb )
+int sdmmc_assd_status_devctl( SIM_HBA *hba, CCB_DEVCTL *ccb )
 {
 	SDMMC_ASSD_STATUS		*as;
 	int						status;
 
-	as		= ccb->cam_devctl_data;
+	as		= (SDMMC_ASSD_STATUS *)ccb->cam_devctl_data;
 
 	if( sdmmc_unit_ready( hba, (CCB_SCSIIO *)ccb ) == CAM_REQ_CMP ) {
-		status = assd_state( hba, CAM_TRUE );
-		if( status == EOK ) {
+		if( ( status = assd_state( hba, CAM_TRUE ) ) == EOK ) {
 			status = assd_status( hba, as );
 		}
 	}
@@ -563,21 +511,21 @@ int sdmmc_assd_status_devctl( SIM_HBA * const hba, CCB_DEVCTL *ccb )
 	return( CAM_REQ_CMP );
 }
 
-int sdmmc_assd_properties_devctl( SIM_HBA * const hba, CCB_DEVCTL *ccb )
+int sdmmc_assd_properties_devctl( SIM_HBA *hba, CCB_DEVCTL *ccb )
 {
 	SDMMC_ASSD_PROPERTIES	*prop;
 	int						status;
 
-	prop	= ccb->cam_devctl_data;
+	prop	= (SDMMC_ASSD_PROPERTIES *)ccb->cam_devctl_data;
 
 	if( sdmmc_unit_ready( hba, (CCB_SCSIIO *)ccb ) != CAM_REQ_CMP ) {
 		ccb->cam_devctl_status = EIO;
 		return( CAM_REQ_CMP );
 	}
 
-	status = assd_state( hba, CAM_TRUE );
-	if( status == EOK ) {
-		status = assd_properties( hba, prop );
+	if( ( status = assd_state( hba, CAM_TRUE ) ) == EOK ) {
+		if( ( status = assd_properties( hba, prop ) ) == EOK ) {
+		}
 	}
 
 	ccb->cam_devctl_status = status;
@@ -585,24 +533,24 @@ int sdmmc_assd_properties_devctl( SIM_HBA * const hba, CCB_DEVCTL *ccb )
 	return( CAM_REQ_CMP );
 }
 
-int sdmmc_assd_apdu_devctl( SIM_HBA * const hba, CCB_DEVCTL *ccb )
+int sdmmc_assd_apdu_devctl( SIM_HBA *hba, CCB_DEVCTL *ccb )
 {
 	SIM_SDMMC_EXT		*ext;
 	SDMMC_ASSD_APDU		*apdu;
 	struct sdio_device	*dev;
 	uint8_t				*data;
 	uint8_t				*apdu_data;
-	uint32_t			len;
+	uint32_t				len;
 	int					status;
 
 	ext			= (SIM_SDMMC_EXT *)hba->ext;
-	apdu		= ccb->cam_devctl_data;
+	apdu		= (SDMMC_ASSD_APDU *)ccb->cam_devctl_data;
 	apdu_data	= (uint8_t *)(apdu + 1);
 	dev			= ext->device;
 	len			= apdu->length + ASSD_APDU_STL_SIZE;	// add 2 for STL
 
 #ifdef SDMMC_ASSD_DEBUG
-	cam_slogf( _SLOGC_SIM_MMC, _SLOG_INFO, 1, 1, "%s:  ", __FUNCTION__ );
+	cam_slogf( _SLOGC_SIM_MMC, _SLOG_ERROR, 1, 1, "%s:  ", __FUNCTION__ );
 #endif
 
 	if( sdmmc_unit_ready( hba, (CCB_SCSIIO *)ccb ) != CAM_REQ_CMP ) {
@@ -610,18 +558,15 @@ int sdmmc_assd_apdu_devctl( SIM_HBA * const hba, CCB_DEVCTL *ccb )
 		return( CAM_REQ_CMP );
 	}
 
-	status = assd_state( hba, CAM_TRUE );
-	if( status != EOK ) {
+	if( ( status = assd_state( hba, CAM_TRUE ) ) ) {
 		ccb->cam_devctl_status = status;
 		return( CAM_REQ_CMP );
 	}
 
 	if( ( len + sizeof( SDMMC_ASSD_APDU ) < ccb->cam_devctl_size ) &&
-			( len < ASSD_APDU_MAX_DLEN ) && ( len > ASSD_APDU_MIN_DLEN ) ) {
-		data = sdio_alloc( ASSD_APDU_MAX_DLEN );
-		if( data != NULL ) {
-			data[0] = len >> 8;
-			data[1] = len;
+			len < ASSD_APDU_MAX_DLEN && len > ASSD_APDU_MIN_DLEN ) {
+		if( ( data = sdio_alloc( ASSD_APDU_MAX_DLEN ) ) ) {
+			data[0] = len >> 8; data[1] = len;
 			memcpy( data + ASSD_APDU_STL_SIZE, apdu_data, len - ASSD_APDU_STL_SIZE );
 			if( len < ASSD_APDU_MAX_DLEN ) {
 				memset( data + len, 0, ASSD_APDU_MAX_DLEN - len );
@@ -630,14 +575,11 @@ int sdmmc_assd_apdu_devctl( SIM_HBA * const hba, CCB_DEVCTL *ccb )
 #ifdef SDMMC_ASSD_DEBUG
 			sdio_dump( data, len );
 #endif
-			status = assd_write_sec_cmd( hba, ASSD_APDU_MAX_DLEN, data, ASSD_TIME_DEFAULT );
-			if( status == EOK ) {
-				status = sdio_wait_card_status( dev, NULL, CDS_READY_FOR_DATA | CDS_CUR_STATE_MSK, CDS_READY_FOR_DATA | CDS_CUR_STATE_TRAN, ASSD_TIME_DEFAULT );
-				if( status == EOK ) {
-					status = assd_wait_scc( hba, ASSD_TIME_DEFAULT );
-					if( status == EOK ) {
-						status = assd_read_sec_cmd( hba, ASSD_APDU_MAX_DLEN, data, ASSD_TIME_DEFAULT );
-						if( status == EOK ) {
+
+			if( ( status = assd_write_sec_cmd( hba, ASSD_APDU_MAX_DLEN, data, ASSD_TIME_DEFAULT ) ) == EOK ) {
+				if( ( status = sdio_wait_card_status( dev, NULL, CDS_READY_FOR_DATA | CDS_CUR_STATE_MSK, CDS_READY_FOR_DATA | CDS_CUR_STATE_TRAN, ASSD_TIME_DEFAULT ) ) == EOK ) {
+					if( ( status = assd_wait_scc( hba, ASSD_TIME_DEFAULT ) ) == EOK ) {
+						if( ( status = assd_read_sec_cmd( hba, ASSD_APDU_MAX_DLEN, data, ASSD_TIME_DEFAULT ) ) == EOK ) {
 							apdu->length			= 0;
 							len				= ( ( data[0] << 8 ) + data[1] );
 							if( len > ASSD_APDU_STL_SIZE ) {
@@ -667,7 +609,7 @@ int sdmmc_assd_apdu_devctl( SIM_HBA * const hba, CCB_DEVCTL *ccb )
 	return( CAM_REQ_CMP );
 }
 
-int sdmmc_assd_init( SIM_HBA * const hba )
+int sdmmc_assd_init( SIM_HBA *hba )
 {
 	SIM_SDMMC_EXT		*ext;
 	int					status;
@@ -680,7 +622,15 @@ int sdmmc_assd_init( SIM_HBA * const hba )
 
 	atomic_set( &ext->eflags, SDMMC_EFLAG_ASSD_INIT );
 
-	status = assd_state( hba, CAM_FALSE );
+	if( ( status = assd_state( hba, CAM_FALSE ) ) == EOK ) {
+
+	}
 
 	return( status );
 }
+
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/devb/sdmmc/sim_assd.c $ $Rev: 896546 $")
+#endif

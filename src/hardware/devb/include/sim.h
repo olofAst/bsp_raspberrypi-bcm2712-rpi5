@@ -1,25 +1,4 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC: 
  * Copyright 2008, QNX Software Systems.  
  *  
@@ -67,6 +46,8 @@
 	#define TAILQ_PREV(elm, field) ((elm)->field.tqe_prev)
 #endif
 
+typedef struct _sim_memory_block	SIM_MEM_BLOCK;
+typedef struct _sim_memory_pool		SIM_MEM_POOL;
 typedef struct _sim_hba_stats		SIM_HBA_STATS;
 typedef struct _sim_hba_extension	SIM_HBA_EXT;
 typedef struct _sim_hba				SIM_HBA;
@@ -106,13 +87,13 @@ typedef struct _sim_hba				SIM_HBA;
 #define SIM_CCB_QUERY			0xFFFF		// Query ccb state
 
 typedef struct sim_lun_queue {
-	_uint32					frzn_cnt;
-	TAILQ_HEAD(sim_ccb_tq,ccb_scsiio)			clist;	// linked list of ccbs
-	TAILQ_HEAD(sim_active_ccb_tq,ccb_scsiio)	alist;	// linked list of active ccbs (nexus)
-	_uint32					ltag_id;					// last tag id given out
-	_uint32					tag;						// count of active tagged ccbs
-	_uint32					nontag;						// count of active non tagged ccbs
-	_uint32					max_tagged;					// maximum tagged per lun
+	_uint32				frzn_cnt;
+	CCB_SCSIIO			*ccb;				// ccbs queued
+	CCB_SCSIIO			*nexus;				// ccbs active
+	_uint32				ltag_id;			// last tag id given out
+	_uint32				tag;				// count of active tagged ccbs
+	_uint32				nontag;				// count of active non tagged ccbs
+	_uint32				max_tagged;			// maximum tagged per lun
 } SIM_LUN_QUEUE;
 
 typedef struct sim_target_queue {
@@ -120,7 +101,8 @@ typedef struct sim_target_queue {
 } SIM_TARGET_QUEUE;
 
 typedef struct sim_queue {
-	pthread_mutex_t		mutex;				// sim queue mutex
+	pthread_t			tid;				// id of controlling thread
+	_uint32				busy;				// queue access lock count
 	timer_t				timerid;			// timer id
 	_uint32				ntargs;				// number of targets
 	_uint32				nluns;				// number of logical units
@@ -139,11 +121,12 @@ typedef struct sim_queue {
 
 // This structure must be the first entry in the private data
 typedef struct sim_que_data {
-	TAILQ_ENTRY(ccb_scsiio)	clink;			// tailq entry for prev/next ccb
-	_uint16					state;			// SCSI state of ccb
-	_uint8					rsvd;
-	_uint8					tag_id;			// tag id for this ccb
-	_uint32					timeout;		// timeout
+	CCB_SCSIIO			*pccb;				// previous ccb pointer
+	CCB_SCSIIO			*nccb;				// next ccb pointer
+	_uint16				state;				// SCSI state of ccb
+	_uint8				rsvd;
+	_uint8				tag_id;				// tag id for this ccb
+	_uint32				timeout;			// timeout
 } SIMQ_DATA;
 
 #define SIMQ_TIMER_DISABLE	0x00
@@ -161,6 +144,11 @@ typedef struct sim_que_data {
 #define SIM_RESET			0x06
 
 #define SIM_PRIORITY		21
+
+#define SIMARG_VAL( _o, _v ) if( (_v) == NULL || *(_v) == '\0' ) { fprintf( stderr, "sim: Missing argument for '%s'", sim_drvr_opts[ _o ] ); return( EINVAL ); }
+#define SIMARG_NOVAL( _o, _v ) if( (_v) != NULL ) { fprintf( stderr, "sim: Unexpected argument for '%s'", sim_drvr_opts[ _o ] ); return( EINVAL ); }
+#define SIMARG_NUMBER( _o, _n, _f ) if( ( *(_n) = (_f)) == -1 ) { fprintf( stderr, "sim: Invalid numeric argument for '%s'", sim_drvr_opts[ _o ] ); return( EINVAL ); }
+#define SIMARG_MISSING( _o, _a ) if( !(_a) ) { fprintf( stderr, "sim: Missing argument component for '%s'", sim_drvr_opts[ _o ] ); return( EINVAL ); }
 
 #define HBA_FLAG_NORESET			0x0001
 #define HBA_FLAG_NOPARITY			0x0002
@@ -192,6 +180,18 @@ struct _sim_hba_stats {
 struct _sim_hba_extension {
 	SIM_HBA				*hba;
 	_uint32				eflags;
+};
+
+struct _sim_memory_block {
+	size_t				size;				// This must be first
+	SIM_MEM_BLOCK		*next;				// This is only used when free
+};
+
+struct _sim_memory_pool {
+	paddr64_t			paddr;				// Physical address of memory
+	char				*vaddr;				// Virtual address of memory
+	size_t				size;				// Size of block of memory
+	SIM_MEM_BLOCK		*list;				// Pointer to start of free list
 };
 
 #define ISADEVICE		0x00000001
@@ -318,18 +318,16 @@ struct _sim_hba {
 	SIM_QUEUE			*simq;
 	CAM_ENTRY			*cam_funcs;
 	SIM_CONFIG_INFO		cfg;
-	int					verbosity;
+	_uint32				verbosity;
 	_uint32				hflags;				// see HBA_FLAGS_...
 	_uint32				state;				// see HBA_STATE_...
-	int					coid;
-	int					chid;
-	int					iid;
+	_uint32				coid;
+	_uint32				chid;
+	_uint32				iid;
 	pthread_t			tid;				// id of event handling thread
 	void				*dhdl;				// device handle (pci)
-	path_id_t			pathid;
-	int					priority;
-
-	_uint32				rsvd[7];
+	_int32				pathid;
+	_uint32				vpathid[8];			// pathid's for virtual devices (system drives)
 
 	_uint8				stride;				// I/O stride
 	_uint8				decode;				// I/O decode
@@ -341,7 +339,7 @@ struct _sim_hba {
 	_uint8				nluns;
 
 	_uint8				speed;
-	_uint8				rsvd1[3];
+	_uint8				rsvd[3];
 
 	_uint16				nsgelm;				// number of scatter gather elements
 
@@ -363,30 +361,61 @@ struct _sim_hba {
 	_uint32				timeout;			// command completion timeout
 	_uint32				rst_settle;			// reset settle time
 	SIM_HBA_STATS		stats;
+	SIM_MEM_POOL		*pool;
 };
 
+#define SIM_MBLOCK_ALLOC( _free, _ptr )	{	pthread_sleepon_lock( ); 		\
+											(_ptr) = (_free);  				\
+											(_free) = *(void **)(_free);	\
+											pthread_sleepon_unlock( ); }
+
+#define SIM_MBLOCK_FREE( _free, _ptr )	{	pthread_sleepon_lock( ); 		\
+											*(void **)(_ptr) = (_free); 	\
+											(_free) = (_ptr);				\
+											pthread_sleepon_unlock( ); }
+
+paddr64_t SIM_MPHYS( SIM_MEM_POOL *_pool, void *_ptr );
+#define SIM_MPHYS( _pool, _ptr )	((_pool)->paddr + (((char *)_ptr) - (_pool)->vaddr))
+#define SIM_VADDR( _pool, _phys )	((_pool)->vaddr + (_phys - (_pool)->paddr))
+
 int simq_ccb_enqueue( SIM_QUEUE *simq, CCB_SCSIIO *ccb );
+void simq_ccb_requeue( SIM_QUEUE *simq, CCB_SCSIIO *ccb );
 CCB_SCSIIO *simq_ccb_dequeue( SIM_QUEUE *simq );
-CCB_SCSIIO *simq_ccb_locate( SIM_QUEUE *simq, target_id_t target, lun_id_t lun, int tag );
+int simq_ccb_remove( SIM_QUEUE *simq, CCB_SCSIIO *ccb );
+CCB_SCSIIO *simq_ccb_locate( SIM_QUEUE *simq, int target, int lun, int tag );
 SIM_QUEUE *simq_init( int coid, void *hba, int ntargs, int nluns, int max_non_tagged, int max_tagged, int mactive, int timeout );
 int simq_dinit( SIM_QUEUE *simq );
 void simq_set_qdepth( SIM_QUEUE *simq, target_id_t target, lun_id_t lun, int qdepth );
-void simq_set_max_tag( SIM_QUEUE *simq, target_id_t target, lun_id_t lun, int mtag );
+void simq_set_max_tag( SIM_QUEUE *simq, int tid, int lid, int mtag );
 int simq_get_tag( CCB_SCSIIO *ccb );
 int simq_ccb_state( CCB_SCSIIO *ccb, int state );
 void simq_post_ccb( SIM_QUEUE *simq, CCB_SCSIIO *ccb );
+void simq_ccb_reset( SIM_QUEUE *simq );
 void simq_scsi_reset( SIM_QUEUE *simq );
-void simq_reset_bus( SIM_QUEUE *simq, CCB_RESETBUS *ccb );
 void simq_reset_dev( SIM_QUEUE *simq, CCB_RESETDEV *ccb );
-int simq_ccb_abort( SIM_QUEUE *simq, CCB_ABORT *ccb );
+int simq_ccb_abort( SIM_QUEUE *simq, CCB_ABORT *ccb_abort );
 int simq_rel_simq( SIM_QUEUE *simq, CCB_RELSIM *ccb );
-int simq_frz_simq( SIM_QUEUE *simq, CCB_FRZSIM *ccb );
+void simq_timer( SIM_QUEUE *simq );
+void simq_lock( SIM_QUEUE *simq );
+void simq_unlock( SIM_QUEUE *simq );
 int simq_timer_settime( SIM_QUEUE *simq, int seconds );
-void simq_clock_gettime( SIM_QUEUE *simq, struct timespec *ts );
+void simq_clock_gettime( SIM_QUEUE *simq, struct timespec *t );
 
 SIM_HBA *sim_alloc_hba( int ext_size );
 void sim_free_hba( SIM_HBA *sim );
 int sim_drvr_options( SIM_HBA *sim, char *options );
 int sim_display_config( SIM_HBA *sim );
+SIM_HBA *sim_alloc_object( int ext_size );
 
+SIM_MEM_POOL *sim_create_pool( size_t size, int flags );
+int sim_destroy_pool( SIM_MEM_POOL *pool );
+void *sim_malloc( SIM_MEM_POOL *pool, size_t size );
+void sim_free( SIM_MEM_POOL *pool, void *ptr );
+void *sim_mem_block( SIM_MEM_POOL *pool, void **free, int num, int size );
+
+#endif
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/devb/include/sim.h $ $Rev: 896546 $")
 #endif

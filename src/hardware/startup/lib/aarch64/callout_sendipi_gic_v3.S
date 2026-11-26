@@ -1,24 +1,3 @@
-/*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
 #
 # Copyright 2014, QNX Software Systems.
 # Copyright 2016, Freescale Semiconductor, Inc.
@@ -43,7 +22,7 @@
 # $QNXLicenseA$
 #
 
-#include <aarch64/callout.ah>
+#include "callout.ah"
 #include "aarch64/gic_v3.h"
 
 
@@ -150,3 +129,11 @@ CALLOUT_START(sendipi_gic_v3_mm, 0, gicr_patch)
     msr         daif, x0
     ret
 CALLOUT_END(sendipi_gic_v3_mm)
+
+#ifdef __QNXNTO__
+#ifdef __USESRCVERSION
+.section .ident, "SM",%progbits,1;
+.asciz "$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/startup/lib/aarch64/callout_sendipi_gic_v3.S $ $Rev: 936455 $";
+.previous
+#endif
+#endif

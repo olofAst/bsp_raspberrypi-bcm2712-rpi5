@@ -1,26 +1,6 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
- * Copyright 2008,2022, BlackBerry Limited.
+ * $QNXLicenseC:
+ * Copyright 2008, QNX Software Systems.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"). You
  * may not reproduce, modify or distribute this software except in
@@ -179,8 +159,7 @@ typedef struct {
 	_Uint32t					Flags;
 	acpi_gas					RESET_REG;
 	_Uint8t						RESET_VALUE;
-    _Uint16t                    ARM_BOOT_ARCH;
-    _Uint8t                     FADT_Minor_Version;
+	_Uint8t						reserved2[3];
 	_Paddr64t					X_FIRMWARE_CTRL;
 	_Paddr64t					X_DSDT;
 	acpi_gas					X_PM1a_EVT_BLK;
@@ -219,8 +198,6 @@ typedef struct {
 #define ACPI_FADT_IBA_LEGACY_DEVICES	_ONEBIT32L(0)
 #define ACPI_FADT_IBA_8042				_ONEBIT32L(1)
 
-#define ACPI_FADT_ABA_PSCI_COMPLIANT    _ONEBIT16L(0)
-#define ACPI_FADT_ABA_PSCI_USE_HVC      _ONEBIT16L(1)
 
 #define ACPI_FACS_SIGNATURE	ACPI_SIGNATURE('F','A','C','S')
 typedef struct {
@@ -269,14 +246,6 @@ typedef acpi_ssdt	acpi_psdt;
 #define ACPI_MADT_TYPE_IO_SAPIC						6
 #define ACPI_MADT_TYPE_LOCAL_SAPIC					7
 #define ACPI_MADT_TYPE_PLATFORM_INTERRUPT_SOURCES	8
-#define ACPI_MADT_TYPE_LOCAL_X2APIC					9
-#define ACPI_MADT_TYPE_LOCAL_X2APIC_NMI				10
-#define ACPI_MADT_TYPE_GENERIC_INTERRUPT			11  // Generic Interrupt Distributor
-#define ACPI_MADT_TYPE_GENERIC_DISTRIBUTOR			12  // Generic Interrupt Distributor
-#define ACPI_MADT_TYPE_GENERIC_MSI_FRAME			13
-#define ACPI_MADT_TYPE_GENERIC_REDISTRIBUTOR		14  // Generic Interrupt Redistributor
-#define ACPI_MADT_TYPE_GENERIC_TRANSLATOR			15  // Generic Interrupt Translator
-#define ACPI_MADT_TYPE_MULTIPROC_WAKEUP				16
 
 typedef struct {
 	_Uint8t			Type;
@@ -394,56 +363,6 @@ typedef struct {
 	_Uint32t			reserved;
 } acpi_madt_platform_interrupt_sources;
 
-typedef struct
-{
-	acpi_madt_header	hdr;
-	_Uint16t            Reserved;           /* Reserved - must be zero */
-	_Uint32t            CpuInterfaceNumber;
-	_Uint32t            Uid;
-	_Uint32t            Flags;
-	_Uint32t            ParkingVersion;
-	_Uint32t            PerformanceInterrupt;
-	_Paddr64t           ParkedAddress;
-	_Paddr64t           BaseAddress;
-	_Paddr64t           GicvBaseAddress;
-	_Paddr64t           GichBaseAddress;
-	_Uint32t            VgicInterrupt;
-	_Paddr64t           GicrBaseAddress;
-    _Uint64t            ArmMpidr;
-    _Uint8t             EfficiencyClass;
-    _Uint8t             Reserved2[1];
-    _Uint16t            SpeInterrupt;       /* ACPI 6.3 */
-} acpi_madt_generic_interrupt;
-
-typedef struct
-{
-	acpi_madt_header	hdr;
-	_Uint16t            Reserved;            /* Reserved - must be zero */
-	_Uint32t            GicId;
-	_Paddr64t           BaseAddress;
-    _Uint32t            GlobalIrqBase;
-    _Uint8t             Version;
-    _Uint8t             Reserved2[3];       /* Reserved - must be zero */
-} acpi_madt_generic_distributor;
-
-typedef struct
-{
-	acpi_madt_header	hdr;
-	_Uint16t            Reserved;           /* reserved - must be zero */
-	_Paddr64t           BaseAddress;
-	_Uint32t            Length;
-} acpi_madt_generic_redistributor;
-
-typedef struct
-{
-	acpi_madt_header	hdr;
-	_Uint16t            Reserved;           /* reserved - must be zero */
-	_Uint32t            TranslationId;
-    _Paddr64t           BaseAddress;
-    _Uint32t            Reserved2;
-} acpi_madt_generic_translator;
-
-
 #define ACPI_MADT_PIS_TYPE_PMI						1
 #define ACPI_MADT_PIS_TYPE_INIT						2
 #define ACPI_MADT_PIS_TYPE_CORRECTED_PLAFORM_ERROR	3
@@ -459,10 +378,6 @@ typedef union {
 	acpi_madt_io_sapic						io_sapic;
 	acpi_madt_local_sapic					local_sapic;
 	acpi_madt_platform_interrupt_sources	platform_interrupt_sources;
-	acpi_madt_generic_interrupt             generic_interrupt;
-	acpi_madt_generic_distributor           generic_distributor;
-	acpi_madt_generic_redistributor         generic_redistributor;
-	acpi_madt_generic_translator            generic_translator;
 } acpi_madt_generic;
 
 #define ACPI_MADT_SIGNATURE	ACPI_SIGNATURE('A','P','I','C')
@@ -612,37 +527,6 @@ typedef struct {
 #define ACPI_DMAR_FLAGS_INTR_REMAP		_ONEBIT32L(0)
 #define ACPI_DMAR_FLAGS_X2APIC_OPT_OUT	_ONEBIT32L(1)
 
-#define ACPI_SPCR_SIGNATURE ACPI_SIGNATURE('S','P','C','R')
-typedef struct {
-    acpi_description_header     hdr;
-    _Uint8t                     Interface_Type;
-    _Uint8t                     Reserved[3];
-    acpi_gas                    Base_Address;
-    _Uint8t                     Interrupt_Type;
-    _Uint8t                     IRQ;
-    _Uint32t                    Global_System_Interrupt;
-    _Uint8t                     Baud_Rate;
-    _Uint8t                     Parity;
-    _Uint8t                     Stop_Bits;
-    _Uint8t                     Flow_Control;
-    _Uint8t                     Terminal_Type;
-    _Uint8t                     Language;
-    _Uint16t                    PCI_Device_ID;
-    _Uint16t                    PCI_Vendor_ID;
-    _Uint8t                     PCI_Bus_Number;
-    _Uint8t                     PCI_Device_Number;
-    _Uint8t                     PCI_Function_Number;
-    _Uint32t                    PCI_Flags;
-    _Uint8t                     PCI_Segment;
-    _Uint32t                    UART_Clock_Frequency;
-} acpi_spcr;
-
-enum acpi_spcr_interface_type {
-    ACPI_SPCR_16550 = 0x0000,
-    ACPI_SPCR_16450 = 0x0001,
-    ACPI_SPCR_PL011 = 0x0003,
-    ACPI_SPCR_SBSA  = 0x000e,
-};
 
 typedef union acpi_generic_u {
 	acpi_description_header		hdr;
@@ -659,11 +543,15 @@ typedef union acpi_generic_u {
 	acpi_hpet					hpet;
 	acpi_mcfg					mcfg;
 	acpi_dmar					dmar;
-    acpi_spcr                   spcr;
 } acpi_generic;
 
 #include _NTO_HDR_(_packpop.h)
 
 #endif
 
-/* __SRCVERSION("acpi.h $Rev: 974790 $"); */
+/* __SRCVERSION("acpi.h $Rev: 797419 $"); */
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/startup/lib/public/hw/acpi.h $ $Rev: 797419 $")
+#endif

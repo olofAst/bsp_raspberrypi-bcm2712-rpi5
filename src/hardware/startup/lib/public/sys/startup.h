@@ -1,41 +1,20 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC:
- * Copyright 2008, 2023, QNX Software Systems.
- *
- * Licensed under the Apache License, Version 2.0 (the "License"). You
- * may not reproduce, modify or distribute this software except in
- * compliance with the License. You may obtain a copy of the License
- * at: http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" basis,
+ * Copyright 2008, QNX Software Systems. 
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License"). You 
+ * may not reproduce, modify or distribute this software except in 
+ * compliance with the License. You may obtain a copy of the License 
+ * at: http://www.apache.org/licenses/LICENSE-2.0 
+ * 
+ * Unless required by applicable law or agreed to in writing, software 
+ * distributed under the License is distributed on an "AS IS" basis, 
  * WITHOUT WARRANTIES OF ANY KIND, either express or implied.
  *
- * This file may contain contributions from others, either as
- * contributors under the License or as licensors under other terms.
- * Please review this entire file for other proprietary rights or license
- * notices, as well as the QNX Development Suite License Guide at
+ * This file may contain contributions from others, either as 
+ * contributors under the License or as licensors under other terms.  
+ * Please review this entire file for other proprietary rights or license 
+ * notices, as well as the QNX Development Suite License Guide at 
  * http://licensing.qnx.com/license-guide/ for other information.
  * $
  */
@@ -106,10 +85,6 @@ struct startup_header {
 #define STARTUP_HDR_FLAGS1_COMPRESS_ZLIB	0x04
 #define STARTUP_HDR_FLAGS1_COMPRESS_LZO		0x08
 #define STARTUP_HDR_FLAGS1_COMPRESS_UCL		0x0c
-/* If this flag is set, then a struct startup_trailer_v2 follows */
-/* the startup. If the image is compressed, then the compressed  */
-/* imagefs is followed by a struct image_trailer_v2.             */
-#define STARTUP_HDR_FLAGS1_TRAILER_V2		0x20
 
 /* All values are stored in target endian format */
 #define STARTUP_HDR_SIGNATURE			0x00ff7eeb
@@ -121,9 +96,9 @@ struct startup_header {
 
 LINEAR ROM XIP
 ==============
-
+                                     
        ROM                                          RAM
- +-------------+ <-image_paddr          +-------------+ <-ram_paddr
+ +-------------+ <-image_paddr          +-------------+ <-ram_paddr 
  | startup hdr |      ^       ^         | startup hdr |            ^
  |             |      |       |         |             |            |
  | startup     |   startup    |         | startup     | <-startup  |
@@ -150,7 +125,7 @@ Linear ROM Compressed
 =====================
 
        ROM                                        RAM
- +-------------+ <-image_paddr         +-------------+ <-ram_paddr
+ +-------------+ <-image_paddr         +-------------+ <-ram_paddr 
  | startup hdr |      ^       ^        | startup hdr |            ^
  |             |      |       |        |             |            |
  | startup     |   startup    |        | startup     | <-startup  |
@@ -175,12 +150,12 @@ S uncompress(ram_paddr + startup_size,
              image_paddr + startup_size, stored_size - startup_size)
 
 
-
+                                    
 ROM NON-XIP (usually because the ROM is too slow to XIP out of)
 ===========
 
        ROM                                  RAM
- +-------------+ <-image_paddr         +-------------+ <-ram_paddr
+ +-------------+ <-image_paddr         +-------------+ <-ram_paddr 
  | startup hdr |      ^       ^        | startup hdr |            ^
  |             |      |       |        |             |            |
  | startup     |   startup    |        | startup     | <-startup  |
@@ -202,29 +177,29 @@ I checksum(image_paddr + startup_size, stored_size - startup_size)
 I copy(image_paddr, ram_paddr, copy_size)
 I jump(startup_vaddr)
 
-
+                                    
 Disk/Network
 ============
 
        RAM
- +-------------+
- | jump ipl    |
- +++++++++++++++ <-image_paddr  <-ram_paddr
- | startup hdr |               ^       ^         ^
- |             |               |       |         |
- | startup     | <-startup  startup    |         |
- |             |   addr       size     |        ram
+ +-------------+ 
+ | jump ipl    | 
+ +++++++++++++++ <-image_paddr  <-ram_paddr       
+ | startup hdr |               ^       ^         ^  
+ |             |               |       |         |  
+ | startup     | <-startup  startup    |         |  
+ |             |   addr       size     |        ram 
  |             |               |       |        size
- |             |               v       |         |
- +-------------+               -     stored      |
- | imagefs hdr |               ^      size       |
- |             |               |       |         |
- | imagefs     |               |       |         |
- |             |            imagefs    |         |
- |             |              size     |         |
- |             |               |       |         |
- |             |               |       |         |
- +-------------+               v       v         v
+ |             |               v       |         |  
+ +-------------+               -     stored      |  
+ | imagefs hdr |               ^      size       |  
+ |             |               |       |         |  
+ | imagefs     |               |       |         |  
+ |             |            imagefs    |         |  
+ |             |              size     |         |  
+ |             |               |       |         |  
+ |             |               |       |         |  
+ +-------------+               v       v         v  
 
 In this case our full IPL is not involved. The image is loaded into memory
 and transfered to by an existing BIOS IPL. Since the existing IPL does not
@@ -233,26 +208,26 @@ We build a tiny IPL on the front of the image which jumps to startup_vaddr.
 
 I jump(startup_vaddr)
 
-
+                                    
 Disk/Network Compressed
 =======================
 
-       RAM                                           RAM
- +-------------+                               +-------------+ <-ram_paddr
+       RAM                                           RAM       
+ +-------------+                               +-------------+ <-ram_paddr    
  | jump ipl    |                               |             |
  +++++++++++++++ <-image_paddr                 |             |
  | startup hdr |              ^      ^     ^   | imagefs hdr |    ^
  |             |              |      |     |   |             |    |
  | startup     | <-startup startup   |    ram  | imagefs     |    |
- |             |   addr      size    |    size |             | imagefs
+ |             |   addr      size    |    size |             | imagefs  
  |             |              |      |     |   |             |   size
  |             |              v      |     |   |             |    |
- +-------------+              -    stored  |   |             |    |
- | imagefs hdr |                    size   |   |             |    |
- |             |                     |     |   |             |    |
- | imagefs     |                     |     |   |             |    |
- +-------------+                     v     v   +-------------+    v
-
+ +-------------+              -    stored  |   |             |    |  
+ | imagefs hdr |                    size   |   |             |    |  
+ |             |                     |     |   |             |    |  
+ | imagefs     |                     |     |   |             |    |  
+ +-------------+                     v     v   +-------------+    v  
+                                                   
 
 In this case our full IPL is not involved. The image is loaded into memory
 and transfered to by an existing BIOS IPL. Since the existing IPL does not
@@ -366,18 +341,13 @@ struct startup_trailer {
 	_Uint32t				cksum;	/* Checksum from start of header to start of trailer */
 };
 
-/* NOTE: The checksums in this trailer will only be valid prior  */
-/* to entering startup. Because the startup binary is executed   */
-/* in-place, its data segment will change once the program is    */
-/* running. Hence, any checksum validation would need to be done */
-/* by the boot loader / IFS.                                     */
-struct startup_trailer_v2 {
-	_Uint8t     sha512[64];    /* SHA512 from start of header to start of trailer       */
-	_Uint32t    cksum;         /* Checksum from start of header to start of this member */
-};
-
 #include _NTO_HDR_(_packpop.h)
 
 #endif /* __STARTUP_H_INCLUDED */
 
-/* __SRCVERSION("startup.h $Rev: 974202 $"); */
+/* __SRCVERSION("startup.h $Rev: 892924 $"); */
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/startup/lib/public/sys/startup.h $ $Rev: 892924 $")
+#endif

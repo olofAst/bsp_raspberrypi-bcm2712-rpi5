@@ -24,9 +24,6 @@ EXCLUDE_OBJS = dl.o
 CCFLAGS += -D__DEVB_NAME__=$(BUILDNAME)
 CCFLAGS += -DCAM_PTHREAD_SETNAME
 
-# Set stack size to 64K
-LDFLAGS += -N64K
-
 ifneq ($(BIND),)
 #
 # Static link some stuff into devb.*
@@ -52,9 +49,9 @@ endif
 ifeq ($(CBIND),)
 LDOPTS += -lcam -M
 endif
-LIBS += drvr cache smmu secpol slog2
+LIBS += drvr cache smmu
 
-# static link LIBS+=fsshared gpt usbdi qcrypto
+# static link LIBS+=fsshared gpt usbdi secpol
 
 ifeq ($(BIND),)
 EXTRA_LIBVPATH+=$(PROJECT_ROOT)/cam/cam/$(subst x86/so.,x86/so,$(CPU)/so.$(filter le be,$(subst ., ,$(VARIANTS))))

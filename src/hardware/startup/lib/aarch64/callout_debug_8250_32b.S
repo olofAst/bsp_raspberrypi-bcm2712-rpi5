@@ -1,24 +1,3 @@
-/*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
 #
 # Copyright 2021, QNX Software Systems.
 #
@@ -41,7 +20,7 @@
  * 32-bit version of 8250/16x50 polled serial I/O
  */
 
-#include <aarch64/callout.ah>
+#include "callout.ah"
 
 /*
  * Patch interrupt callouts to access rw data.
@@ -187,3 +166,12 @@ CALLOUT_START(break_detect_8250_32b, 0, patch_debug)
 1:
     ret
 CALLOUT_END(break_detect_8250_32b)
+
+
+#ifdef __QNXNTO__
+#ifdef __USESRCVERSION
+.section .ident, "SM",%progbits,1;
+.asciz "$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/startup/lib/aarch64/callout_debug_8250_32b.S $ $Rev: 937906 $";
+.previous
+#endif
+#endif

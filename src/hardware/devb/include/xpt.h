@@ -1,25 +1,4 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC: 
  * Copyright 2008, QNX Software Systems.  
  *  
@@ -52,6 +31,14 @@
 
 struct _sim_hba;
 
+#if ( __PTR_BITS__ == 64 )
+	#define CAM_PULSE_PTR( __coid, __priority, __code, __value )			MsgSendPulsePtr( __coid, __priority, __code, (void *)__value )
+	#define CAM_PULSE_PTR_R( __coid, __priority, __code, __value )			MsgSendPulsePtr_r( __coid, __priority, __code, (void *)__value )
+#else
+	#define CAM_PULSE_PTR( __coid, __priority, __code, __value )			MsgSendPulse( __coid, __priority, __code, (int)__value )
+	#define CAM_PULSE_PTR_R( __coid, __priority, __code, __value )			MsgSendPulse_r( __coid, __priority, __code, (int)__value )
+#endif
+
 #define XPT_XFLAG_BOUNCE				0x0001
 #define XPT_XFLAG_CACHE					0x0002
 #define XPT_XFLAG_VERIFY				0x0004
@@ -65,10 +52,10 @@ struct _sim_hba;
 #define XPT_XFLAG_IO_DONE				0x0400
 #define XPT_XFLAG_COALESCE				0x0800
 #define XPT_XFLAG_ASYNC					0x01000
-#define XPT_XFLAG_IO					0x02000
-#define XPT_XFLAG_IO_PRIV				0x04000
-#define XPT_XFLAG_SMMU					0x08000
-#define XPT_XFLAG_SMMU_EXT				0x10000		// external smmu ie usb stack
+#define XPT_XFLAG_IO_PRIV				0x02000
+#define XPT_XFLAG_SMMU					0x04000
+#define XPT_XFLAG_SMMU_EXT				0x08000		// external smmu ie usb stack
+#define XPT_XFLAG_IO					0x10000
 
 #define XPT_MAX_20BIT_ADDR				0xfffffUL
 #define XPT_MAX_24BIT_ADDR				0xffffffUL
@@ -78,8 +65,6 @@ struct _sim_hba;
 #define XPT_MEM_POOL_HIWATER			4
 
 #define XPT_TYPED_MEM_DFLT				"sysram&below4G"
-
-#define XPT_PRIORITY					21
 
 struct _cam_smmu_map;
 
@@ -114,19 +99,19 @@ typedef struct _xpt_mem {
 
 typedef struct _xpt {
 	uint32_t			xflags;
-	int					verbosity;
+	uint32_t			verbosity;
 	uint32_t			vflags;
 	uint32_t			lun_scan;
 	uint32_t			xpt_max_ccb;
 	uint32_t			xpt_max_edt;
-	path_id_t			xpt_max_path;
-	path_id_t			xpt_last_path;
+	uint32_t			xpt_max_path;
+	uint32_t			xpt_last_path;
 	pthread_mutex_t		mutex;
 	CCB_HEADER			*xpt_ccb_list;
 	CAM_SIM_ENTRY		**cam_conftbl;
 	CAM_EDT_ENTRY		*cam_edt;
 	CAM_EDT_ENTRY		**cam_map;
-	ASYNC_INFO			*async;				// XPT async callback list
+	ASYNC_INFO			*async;			// XPT async callback list
 
 	char				**argv;
 	uint32_t			argc;
@@ -163,9 +148,7 @@ typedef struct _xpt {
 	uint32_t			max_io_rd;
 	uint32_t			max_io_wr;
 
-	int					priority;
-
-	int					rsvd[9];
+	int					rsvd[10];
 } XPT;
 
 // QNX specific cam_vu_flags in CCB_SCSIIO
@@ -233,7 +216,7 @@ void xpt_async(int opcode, path_id_t path_id, target_id_t target_id, lun_id_t lu
  * for the SIM. The value returned is the assigned Path ID; a value of -1
  * indicates that registration was not successful.
  */
-path_id_t xpt_bus_register(CAM_SIM_ENTRY *sim_entry, struct _sim_hba *sim_data);
+int xpt_bus_register(CAM_SIM_ENTRY *sim_entry, struct _sim_hba *sim_data);
 
 
 /*
@@ -241,7 +224,7 @@ path_id_t xpt_bus_register(CAM_SIM_ENTRY *sim_entry, struct _sim_hba *sim_data);
  * zero indicates the bus is no longer registered, any other value indicates the
  * call was unsuccessful.
  */
-int xpt_bus_deregister(path_id_t path);
+int xpt_bus_deregister(path_id_t path_id);
 
 
 /*
@@ -265,7 +248,7 @@ int xpt_init(void);
  * There are no arguments and the return value is a pointer to an initialized
  * CCB.
  */
-void *xpt_ccb_alloc(void);
+CCB *xpt_ccb_alloc(void);
 
 
 /*
@@ -274,14 +257,14 @@ void *xpt_ccb_alloc(void);
  *
  * The argument is the pointer to the CCB to be freed, there is no CAM Status.
  */
-void xpt_ccb_free(CCB *freeccb);
+void xpt_ccb_free(CCB *ccb);
 
 /*
  * This routine returns vendor unique associated data (CCB_SCSIIO cam_vu_flags & CAM_VUF_VDATA)
  *
  * The arguments are a pointer to the CCB, and returns a pointer to vdata.
  */
-IO_VU_DATA	*xpt_ccb_vdata( CCB *ccb );
+IO_VU_DATA	*xpt_ccb_vdata( CCB *vccb );
 
 /*
  * All CAM/SCSI CCB requests to the XPT/SIM are placed through this function
@@ -291,7 +274,7 @@ IO_VU_DATA	*xpt_ccb_vdata( CCB *ccb );
  * The argument is a pointer to the CCB, and the CAM Status is either Success or
  * Failure.
  */
-int xpt_action(CCB *ccbp);
+int xpt_action(CCB *ccb);
 
 int xpt_setasync_cb( ASYNC_INFO **alist, CCB_SETASYNC *ccb );
 
@@ -299,7 +282,7 @@ int xpt_scan_bus(int path);
 
 int xpt_scan_devs(int type, int (*func)( CCB_PATHINQ *, CCB_GETDEV *));
 
-CAM_EDT_ENTRY *xpt_nexus( path_id_t path, target_id_t target, lun_id_t lun, int create );
+CAM_EDT_ENTRY *xpt_nexus( path_id_t path_id, target_id_t target_id, lun_id_t lun, int create );
 
 int xpt_smart_cache( void );
 
@@ -313,7 +296,7 @@ int xpt_ptov_sg( SG_ELEM *psg, SG_ELEM *vsg, int nsg, CAM_VM_OFFSET cam_map );
 
 #define XPT_ALLOC_CONTIG		0x01
 #define XPT_ALLOC_NOCACHE		0x02
-void *xpt_alloc( int aflg, size_t size, paddr64_t *paddr );
+void *xpt_alloc( int alfg, size_t size, paddr64_t *paddr );
 int xpt_free( CAM_VM_OFFSET addr, size_t size );
 
 void xpt_cache_inval( void *vaddr, paddr64_t paddr, size_t count );
@@ -324,7 +307,7 @@ void xpt_display_ccb( CCB *ccb_ptr, int verbosity );
 int xpt_args( int argc, char *argv[] );
 
 #define XPT_SMMU_MAP_INIT( _map, _flgs, _phys, _len )	do {									\
-															(_map)->flags = (_flgs);				\
+															(_map)->flags = _flgs;				\
 															(_map)->nentries = 1;				\
 															(_map)->entries->phys = (_phys);	\
 															(_map)->entries->len = (_len);		\
@@ -361,6 +344,11 @@ typedef union _xpt_device {
 typedef void		XPT_DEVICE_EVENT;
 
 int xpt_device_deregister( XPT_DEVICE *dev );
-int xpt_device_register( XPT_DEVICE *dev, unsigned flgs, int (*evcbf)( XPT_DEVICE *dev, XPT_DEVICE_EVENT *ev ) );
+int xpt_device_register( XPT_DEVICE *dev, unsigned flgs, int (*cbf)( XPT_DEVICE *dev, XPT_DEVICE_EVENT *ev ) );
 
+#endif
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/devb/include/xpt.h $ $Rev: 915926 $")
 #endif

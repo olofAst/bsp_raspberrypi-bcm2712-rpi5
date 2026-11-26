@@ -1,25 +1,4 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC:
  * Copyright 2007-2019, QNX Software Systems.
  *
@@ -40,24 +19,26 @@
  * $
  */
 
+
 #include "externs.h"
+#include <sys/slogcodes.h>
 
 #define	PL011_RX_ERROR (PL011_DR_OE | PL011_DR_BE | PL011_DR_PE | PL011_DR_FE)
 
-#ifdef USE_DMA
-static int errCnt;
+int errCnt;
 
+#ifdef USE_DMA
 void *timer_thread (void *data)
 {
 
 	timer_t				timer_id;
 	struct itimerspec	itime;
-	struct sigevent		timer_event;
+	struct sigevent 	timer_event;
 	struct _pulse		pulse;
 	iov_t				iov;
 	int					rcvid;
-	int					chid, coid;
-	DEV_PL011			*dev = data;
+	int 				chid, coid;
+	DEV_PL011 			*dev = data;
 
 	if ((chid = ChannelCreate(_NTO_CHF_DISCONNECT | _NTO_CHF_UNBLOCK)) == -1 ||
 		(coid = ConnectAttach(0, 0, chid, _NTO_SIDE_CHANNEL, 0)) == -1)
@@ -72,9 +53,9 @@ void *timer_thread (void *data)
 		return NULL;
 	}
 	itime.it_value.tv_sec = 0;
-	itime.it_value.tv_nsec = dev->drt *1000000;
+	itime.it_value.tv_nsec = dev->drt *1000000; 
 	itime.it_interval.tv_sec = 0;
-	itime.it_interval.tv_nsec = dev->drt *1000000;
+	itime.it_interval.tv_nsec = dev->drt *1000000; 
 	timer_settime(timer_id, 0, &itime, NULL);
 
 	SETIOV(&iov, &pulse, sizeof(pulse));
@@ -111,7 +92,7 @@ void *tx_dma_thread (void *data)
 	struct _pulse		pulse;
 	iov_t				iov;
 	int					rcvid;
-	DEV_PL011			*dev = data;
+	DEV_PL011 			*dev = data;
 
 	SETIOV(&iov, &pulse, sizeof(pulse));
 
@@ -133,8 +114,8 @@ void *tx_dma_thread (void *data)
 	return NULL;
 }
 
-#endif /* USE_DMA */
 
+#endif
 int tx_interrupt(DEV_PL011 *dev)
 {
 	dev->tty.un.s.tx_tmr = 0;	/* clear Timeout */
@@ -155,20 +136,20 @@ int tx_interrupt(DEV_PL011 *dev)
 				dev->tinfo_tx.xfer_bytes= nbytes;
 				if(dev->dmafuncs.setup_xfer (dev->dma_chn_tx, &dev->tinfo_tx)==-1){
 					//error starting DMA?
-#ifdef MDEBUG
-					TraceEvent(_NTO_TRACE_INSERTSUSEREVENT, 271, 0, dev->tinfo_tx.xfer_bytes);
+#ifdef MDEBUG	
+					TraceEvent(_NTO_TRACE_INSERTSUSEREVENT, 271, 0, dev->tinfo_tx.xfer_bytes); 
 #endif
-				}
+				}		
 				dev->dmafuncs.xfer_start(dev->dma_chn_tx);
 			}else{
 				atomic_clr(&dev->dma_state, DMA_TX_ACTIVE);
 			}
 		}
-#ifdef MDEBUG
-		TraceEvent(_NTO_TRACE_INSERTSUSEREVENT, 201, 0, nbytes);
+#ifdef MDEBUG	
+		TraceEvent(_NTO_TRACE_INSERTSUSEREVENT, 201, 0, nbytes); 
 #endif
 	}
-#endif /* USE_DMA */
+#endif
 
 	return (tto(&dev->tty, TTO_DATA, 0x80));
 }
@@ -222,8 +203,8 @@ int rx_interrupt(DEV_PL011 *dev)
 
 				}
 
-#ifdef MDEBUG
-				TraceEvent(_NTO_TRACE_INSERTSUSEREVENT, 202, nbytes, rsr);
+#ifdef MDEBUG	
+				TraceEvent(_NTO_TRACE_INSERTSUSEREVENT, 202, nbytes, rsr); 
 #endif
 				cnt = nbytes;
 				buf =(buffer0)?((unsigned char *)dev->buf_rx[0].vaddr):((unsigned char *)dev->buf_rx[1].vaddr);
@@ -232,16 +213,16 @@ int rx_interrupt(DEV_PL011 *dev)
 				}else if(key){
 					status |= tti (&dev->tty, key);
 				}
-#ifdef MDEBUG
+#ifdef MDEBUG	
 				//log the begining of the 2 bytes and end of 2 bytes
 				if(nbytes>0)
-					TraceEvent(_NTO_TRACE_INSERTSUSEREVENT, 400, buf[0], buf[1]);
+					TraceEvent(_NTO_TRACE_INSERTSUSEREVENT, 400, buf[0], buf[1]); 
 				if(nbytes>2)
-					TraceEvent(_NTO_TRACE_INSERTSUSEREVENT, 401, buf[nbytes-2], buf[nbytes-1]);
+					TraceEvent(_NTO_TRACE_INSERTSUSEREVENT, 401, buf[nbytes-2], buf[nbytes-1]); 
 #endif
 #ifdef MDEBUG
-{
-				TraceEvent(_NTO_TRACE_INSERTSUSEREVENT, 203, nbytes,dev->tty.ibuf.cnt);
+{			
+				TraceEvent(_NTO_TRACE_INSERTSUSEREVENT, 203, nbytes,dev->tty.ibuf.cnt); 
 }
 #endif
 			}
@@ -250,27 +231,27 @@ int rx_interrupt(DEV_PL011 *dev)
 				//restart the new transfer before handling stop
 				dev->tinfo_rx.dst_addrs = &dev->buf_rx[buffer0];
 				if(dev->dmafuncs.setup_xfer (dev->dma_chn_rx, &dev->tinfo_rx)==-1){
-#ifdef MDEBUG
-					TraceEvent(_NTO_TRACE_INSERTSUSEREVENT, 202, cnt, 0);
+#ifdef MDEBUG	
+					TraceEvent(_NTO_TRACE_INSERTSUSEREVENT, 202, cnt, 0); 
 #endif
-				}
-
+				}		
+				
 				dev->dmafuncs.xfer_start (dev->dma_chn_rx);
 				nanospin_ns(200);
 				dev->buffer0 ^= 1;
 				atomic_clr(&dev->dma_state, DMA_RX_STOP);
 #ifdef MDEBUG
-				{
-					TraceEvent(_NTO_TRACE_INSERTSUSEREVENT, 204, nbytes,dev->tty.ibuf.cnt);
+				{			
+					TraceEvent(_NTO_TRACE_INSERTSUSEREVENT, 204, nbytes,dev->tty.ibuf.cnt); 
 				}
 #endif
 			}
 			atomic_set(&dev->dma_state, DMA_RX_ACTIVE);
 		}
 
-#ifdef MDEBUG
-//		TraceEvent(_NTO_TRACE_INSERTSUSEREVENT, 205, dev->tty.flags, dev->tty.ibuf.cnt);
-		TraceEvent(_NTO_TRACE_INSERTSUSEREVENT, 206, dev->tty.c_cflag, status);
+#ifdef MDEBUG	
+//		TraceEvent(_NTO_TRACE_INSERTSUSEREVENT, 205, dev->tty.flags, dev->tty.ibuf.cnt); 
+		TraceEvent(_NTO_TRACE_INSERTSUSEREVENT, 206, dev->tty.c_cflag, status); 
 #endif
 		pthread_mutex_unlock (&dev->dma_lock);
 		return status;
@@ -303,16 +284,16 @@ int rx_interrupt(DEV_PL011 *dev)
 		cnt++;
 	}
 
-#ifdef MDEBUG
-	TraceEvent(_NTO_TRACE_INSERTSUSEREVENT, 204, cnt, status);
+#ifdef MDEBUG	
+	TraceEvent(_NTO_TRACE_INSERTSUSEREVENT, 204, cnt, status); 
 #endif
 	return status;
 }
 
-static int do_interrupt(DEV_PL011 *dev)
+static int do_interrupt(DEV_PL011 *dev, int id)
 {
-	int			status = 0;
-	unsigned	iir;
+	int				status = 0;
+	unsigned		iir;
 
 	iir = read_pl011(dev, PL011_MIS);
 #ifdef MDEBUG
@@ -336,61 +317,50 @@ static int do_interrupt(DEV_PL011 *dev)
 	return status;
 }
 /*
- * Serial interrupt event handler
+ * Serial interrupt handler
  */
-static int interrupt_event_handler(message_context_t *msgctp, int code, unsigned flags, void *handle)
+static const struct sigevent * ser_intr(void *area, int id)
 {
-	DEV_PL011	*dev = handle;
-	int status = EOK;
+	DEV_PL011	*dev = area;
+	const int	status = do_interrupt(dev,id);
 
-	status = do_interrupt(dev);
-
-	/* Interrupt event handler does not return a tte event,
-	 * so we must issue the tte pulse manually
-	 */
-	if(status) {
-		iochar_send_event(&dev->tty);
+	/* RP1 UART: acknowledge the MSI-X vector so that it can fire again */
+	if (dev->rp1_iack_reg != 0) {
+		out32(dev->rp1_iack_reg, 1U << 2);
 	}
 
-	variant_intr_unmask();
+	if (status && (dev->tty.flags & EVENT_QUEUED) == 0) {
+		dev_lock(&ttyctrl);
+		ttyctrl.event_queue[ttyctrl.num_events++] = &dev->tty;
+		atomic_set(&dev->tty.flags, EVENT_QUEUED);
+		dev_unlock(&ttyctrl);
+		return &ttyctrl.event;
+	}
 
-	InterruptUnmask(dev->intr, dev->iid);
-
-	return (EOK);
+	return 0;
 }
 
 void
 ser_attach_intr(DEV_PL011 *dev)
 {
-	int sigevcode;
-	struct sigevent event;
-
 	/*
 	 * Disable the UART and clear interrupts
 	 */
-	if(!dev->loopback) {
+	if(!dev->loopback){
 		while (read_pl011(dev, PL011_FR) & PL011_FR_BUSY)
 			;
 	}
 
-	variant_intr_init(dev);
-
 	write_pl011(dev, PL011_ICR, 0x7FF);
-	/* Associate a pulse which will call the event handler. */
-	if((sigevcode = pulse_attach(ttyctrl.dpp,
-			MSG_FLAG_ALLOC_PULSE, 0, &interrupt_event_handler, dev)) == -1) {
-		slogf(_SLOG_SETCODE(_SLOGC_CHAR, 0), _SLOG_ERROR,
-				"io-char: Unable to attach event pulse(%d)", errno);
-		return;
+
+	rp1_iack_init(dev);
+	if (dev->rp1_iack_reg != 0) {
+		out32(dev->rp1_iack_reg, 1U << 2);
 	}
 
-	SIGEV_PULSE_INIT(&event, ttyctrl.coid, dev->prio, sigevcode, 0);
-	dev->iid = InterruptAttachEvent(dev->intr, &event, _NTO_INTR_FLAGS_TRK_MSK);
-	if (dev->iid == -1) {
-		slogf(_SLOG_SETCODE(_SLOGC_CHAR, 0), _SLOG_ERROR,
-				"Unable to attach InterruptEvent: %s", strerror(errno));
-	}
+	dev->iid = InterruptAttach(dev->intr, ser_intr, dev, 0, _NTO_INTR_FLAGS_TRK_MSK);
 }
+
 
 void
 ser_detach_intr(DEV_PL011 *dev)
@@ -406,3 +376,10 @@ ser_detach_intr(DEV_PL011 *dev)
 	InterruptDetach(dev->iid);
 	dev->intr = _NTO_INTR_SPARE;
 }
+
+
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/devc/serpl011/intr.c $ $Rev: 932262 $")
+#endif

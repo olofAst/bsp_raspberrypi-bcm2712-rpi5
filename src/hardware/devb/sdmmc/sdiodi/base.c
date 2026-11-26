@@ -1,25 +1,4 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC:
  * Copyright 2007, 2008, QNX Software Systems.
  *
@@ -51,14 +30,15 @@
 #include <stdarg.h>
 #include <unistd.h>
 
-#include <sys/mman.h>
 #include <sys/trace.h>
 #include <sys/slogcodes.h>
+#include <sys/mman.h>
 
 #include <internal.h>
 
 #include <xpt.h>
 
+extern sdio_vendor_t	sdio_vendors[];
 sdio_ctrl_t				sdio_ctrl;
 
 // tuning block pattern for 4 bit mode
@@ -94,7 +74,7 @@ const uint8_t	sdio_tbp_8bit[] = {
 };
 
 __attribute__((used))
-static void sdio_trace_event( const uint32_t event, const char * const fmt, ... )
+static void sdio_trace_event( int event, const char *fmt, ... )
 {
 	char		buf[255];
 	va_list		arglist;
@@ -105,7 +85,7 @@ static void sdio_trace_event( const uint32_t event, const char * const fmt, ... 
 	TraceEvent( _NTO_TRACE_INSERTUSRSTREVENT, event, buf );
 }
 
-ssize_t __attribute__((__format__(__printf__, 5, 6))) sdio_slogf( const int opcode, const int severity, const int verbosity, const int vlevel, const char * const fmt, ... )
+ssize_t __attribute__((__format__(__printf__, 5, 6))) sdio_slogf( int opcode, int severity, int verbosity, int vlevel, const char *fmt, ... )
 {
 	ssize_t		ret;
 	va_list		arglist;
@@ -128,6 +108,27 @@ ssize_t __attribute__((__format__(__printf__, 5, 6))) sdio_slogf( const int opco
 	return( ret );
 }
 
+
+//	An invalid sub option is a fatal error, so might be a good idea to tell
+//	the user what the problem was.
+static void report_invalid_suboption( const char* function, const char* suboption )
+{
+	char text[40];
+
+	int i;
+
+	for( i = 0; i < (sizeof text) - 1; i++ ) {
+		char ch = suboption[i];
+		if( !ch ||ch == ',' )
+			break;
+
+		text[i] = ch;
+	}
+	text[i] = '\0';
+
+	sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, 6, 1, "%s: Invalid sdio option: %s", function, text );
+}
+
 // return position of MSB
 int fls( int val )
 {
@@ -135,31 +136,29 @@ int fls( int val )
 
 	idx = 32;
 	while( val ) {
-		if( ( val & 0x80000000u ) ) return( idx );
+		if( val & 0x80000000u ) return( idx );
 		val <<= 1;
 		idx--;
 	}
 	return( 0 );
 }
 
-void *sdio_alloc( const size_t size )
+void *sdio_alloc( size_t size )
 {
-	void		*vaddr;
+	void *addr = xpt_alloc( XPT_ALLOC_CONTIG | XPT_ALLOC_NOCACHE, size, NULL );
 
-	vaddr = xpt_alloc( XPT_ALLOC_CONTIG | XPT_ALLOC_NOCACHE, size, NULL );
-	if( vaddr == MAP_FAILED ) {
-		vaddr = NULL;
-	}
+	if( addr == MAP_FAILED )
+		addr = NULL;
 
-	return( vaddr );
+	return addr;
 }
 
-int sdio_free( void * const ptr, const size_t size )
+int sdio_free( void *vaddr, size_t size )
 {
-	return( xpt_free( ptr, size ) );
+	return( xpt_free( vaddr, size ) );
 }
 
-sdio_hc_t *sdio_hc_alloc( void )
+sdio_hc_t *sdio_hc_alloc( )
 {
 	sdio_hc_t		*hc;
 	sdio_hc_cfg_t	*cfg;
@@ -173,10 +172,7 @@ sdio_hc_t *sdio_hc_alloc( void )
 		cfg->verbosity	= sdio_ctrl.verbosity;
 		cfg->idle_time	= SDIO_PM_IDLE_TIME;
 		cfg->sleep_time	= SDIO_PM_SLEEP_TIME;
-		hc->hc_coid		= -1;
-		hc->hc_chid		= -1;
-		hc->hc_tid		= -1;
-		hc->tuning_timerid = -1;
+		hc->hc_coid		= hc->hc_chid = hc->hc_tid = hc->tuning_timerid = -1;
 		TAILQ_INSERT_TAIL( &sdio_ctrl.hlist, hc, hlink );
 	}
 
@@ -185,7 +181,7 @@ sdio_hc_t *sdio_hc_alloc( void )
 
 int sdio_hc_free( sdio_hc_t *hc )
 {
-//	sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, hc->cfg.verbosity, 1, "%s: hc %p", __FUNCTION__, hc );
+//	sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 1, "%s: hc %p", __FUNCTION__, hc );
 
 	TAILQ_REMOVE( &sdio_ctrl.hlist, hc, hlink );
 	sdio_ctrl.nhc--;
@@ -194,17 +190,17 @@ int sdio_hc_free( sdio_hc_t *hc )
 	return( EOK );
 }
 
-int sdio_vtop_sg( sdio_sge_t * const vsg, sdio_sge_t * const psg, const int sgc, void * const mhdl )
+int sdio_vtop_sg( sdio_sge_t *vsg, sdio_sge_t *psg, int sgc, void *mhdl )
 {
 	return( xpt_vtop_sg( (SG_ELEM *)vsg, (SG_ELEM *)psg, sgc, mhdl ) );
 }
 
-paddr64_t sdio_vtop( void * const vaddr )
+paddr64_t sdio_vtop( void *vaddr )
 {
 	return( xpt_vtop( vaddr, NULL ) );
 }
 
-static char *sdio_module_args( const char *module, const int argc, char * const argv[], int occurrence )
+static char *sdio_module_args( const char *module, int argc, char *argv[], int occurrence )
 {
 	char	*cp;
 	int		n;
@@ -217,7 +213,7 @@ static char *sdio_module_args( const char *module, const int argc, char * const 
 		if( !strcmp( argv[n], module ) ) {
 			if( !--occurrence ) {
 				cp = strdup( argv[n + 1] );
-				return( cp );
+				return(cp);
 			}
 		}
 	}
@@ -229,12 +225,12 @@ static int64_t sdio_parse_number64( const char *str )
 	char	*cp;
 	int64_t	number;
 
-	if( ( str == NULL ) || ( *str == '\0' ) ) {
+	if( str == NULL || *str == '\0' ) {
 		return( SDIO_INVALID_NUM );
 	}
 
 	number = strtoll( str, &cp, 0 );
-	if( ( !number && ( cp == str ) ) || ( number < 0 ) || ( *cp != '\0' ) ) {
+	if( ( !number && cp == str ) || number < 0 || *cp != '\0' ) {
 		return( SDIO_INVALID_NUM );
 	}
 
@@ -246,12 +242,12 @@ static int sdio_parse_number( const char *str )
 	char	*cp;
 	int		number;
 
-	if( ( str == NULL ) || ( *str == '\0' ) ) {
+	if( str == NULL || *str == '\0' ) {
 		return( SDIO_INVALID_NUM );
 	}
 
 	number = strtol( str, &cp, 0 );
-	if( ( !number && ( cp == str ) ) || ( number < 0 ) || ( *cp != '\0' ) ) {
+	if( ( !number && cp == str ) || number < 0 || *cp != '\0' ) {
 		return( SDIO_INVALID_NUM );
 	}
 	return( number );
@@ -265,8 +261,7 @@ static char *sdio_strchr( char *string, char token )
 	escaped = 0;
 	for( cp = string; *cp != '\0'; ++cp ) {
 		if( escaped ) {
-			escaped = 0;
-			--cp;
+			escaped = 0, --cp;
 			memmove( cp, cp + 1, strlen( cp ) );
 		}
 		else if( *cp == '\\' ) {
@@ -274,9 +269,6 @@ static char *sdio_strchr( char *string, char token )
 		}
 		else if( *cp == token ) {
 			return( cp );
-		}
-		else {
-			// nothing
 		}
 	}
 	return( NULL );
@@ -290,12 +282,10 @@ static int sdio_parse_tuple( char *string, char separator, char **entry, ... )
 
 	nargs = 0;
 	va_start( args, entry );
-	while( ( string != NULL ) || ( entry != NULL ) ) {
+	while( string != NULL || entry != NULL ) {
 		cp = (string != NULL) ? sdio_strchr( string, separator ) : NULL;
 		if( entry != NULL ) {
-			*entry = string;
-			++nargs;
-			entry = va_arg( args, char ** );
+			*entry = string, ++nargs, entry = va_arg( args, char ** );
 		}
 		if( cp != NULL ) {
 			*cp++ = '\0';
@@ -317,19 +307,16 @@ static int sdio_parse_tuple( char *string, char separator, char **entry, ... )
  */
 int sdio_hc_getsubopt( char **optionp, char * const *tokens, char **valuep )
 {
-	char		*p;
-	char		*opt;
-	int			len;
-	int			index;
+	char		*p, *opt;
+	int			len, index;
 	const char	*token;
 
-	*valuep	= NULL;
-	opt		= *optionp;
+	*valuep = 0;
 
-	for( p = opt, len = 0; *p && ( *p != ':' ); p++, len++ ) {
+	for( opt = p = *optionp, len = 0; *p && *p != ':'; p++, len++ ) {
 		if( *p == '=' ) {
-			for( *valuep = ++p; *p && ( *p != ':' ); p++ ) {
-				// Nothing to do
+			for( *valuep = ++p; *p && *p != ':'; p++ ) {
+				/* Nothing to do */
 			}
 			break;
 		}
@@ -338,21 +325,20 @@ int sdio_hc_getsubopt( char **optionp, char * const *tokens, char **valuep )
 	if( *p ) {
 		*p++ = '\0';
 	}
-
 	*optionp = p;
 
 	for( index = 0; ( token = *tokens++ ); index++ ) {
-		if( ( *token == *opt ) && (len > 0) &&!strncmp( token, opt, len ) && ( token[len] == '\0' ) ) {
-			return( index );
+		if( *token == *opt && !strncmp( token, opt, len ) && token[len] == '\0' ) {
+			return index;
 		}
 	}
 
 	*valuep = opt;
 
-	return( -1 );
+	return -1;
 }
 
-int sdio_set_thread_state( uint32_t *tstate, const int state )
+int sdio_set_thread_state( uint32_t *tstate, int state )
 {
 	pthread_sleepon_lock( );
 	*tstate = state;
@@ -361,12 +347,12 @@ int sdio_set_thread_state( uint32_t *tstate, const int state )
 	return( EOK );
 }
 
-int sdio_create_thread( pthread_t *tid, pthread_attr_t *aattr, void *(*func)(void *), void * const arg, const int priority, uint32_t *tstate, char * const name )
+int sdio_create_thread( pthread_t *tid, pthread_attr_t *aattr, void *(*func)(void *), void *arg, int priority, uint32_t *tstate, char *name )
 {
 	pthread_t			_tid;
 	pthread_attr_t		*pattr;
 	pthread_attr_t		attr;
-	struct sched_param	param = {0};
+	struct sched_param	param;
 	int					status;
 
 	if( tid == NULL ) {
@@ -410,13 +396,13 @@ int sdio_create_thread( pthread_t *tid, pthread_attr_t *aattr, void *(*func)(voi
 			pthread_sleepon_wait( tstate );
 		}
 		pthread_sleepon_unlock( );
-		status = (*tstate == SDIO_TSTATE_INITIALIZED) ? EOK : EIO;
+		status = *tstate == SDIO_TSTATE_INITIALIZED ? EOK : EIO;
 	}
 
 	return( status );
 }
 
-uint32_t sdio_extract_bits( uint32_t * const data, const int bits, const int start, const int size )
+uint32_t sdio_extract_bits( uint32_t *data, int bits, int start, int size )
 {
 	int			idx;
 	int			shift;
@@ -433,13 +419,13 @@ uint32_t sdio_extract_bits( uint32_t * const data, const int bits, const int sta
 	return( value & ( ( 1llu << size ) - 1 ) );
 }
 
-int sdio_sg_start( sdio_hc_t *hc, sdio_sge_t * const sge, const uint32_t nsg )
+int sdio_sg_start( sdio_hc_t *hc, sdio_sge_t *sge, int nsg )
 {
 	sdio_wspc_t	*wspc;
 
 	wspc		= &hc->wspc;
 
-	if( !nsg && ( sge == NULL ) ) {
+	if( !nsg && sge == NULL ) {
 		return( EINVAL );
 	}
 
@@ -452,7 +438,7 @@ int sdio_sg_start( sdio_hc_t *hc, sdio_sge_t * const sge, const uint32_t nsg )
 }
 
 // return:  SDIO_TRUE - complete / SDIO_FALSE - more to do
-int sdio_sg_nxt( sdio_hc_t *hc, uint8_t **addr, uint32_t *len, const uint32_t blksz )
+int sdio_sg_nxt( sdio_hc_t *hc, uint8_t **addr, int *len, int blksz )
 {
 	sdio_wspc_t	*wspc;
 
@@ -477,7 +463,7 @@ int sdio_sg_nxt( sdio_hc_t *hc, uint8_t **addr, uint32_t *len, const uint32_t bl
 	return( SDIO_FALSE );
 }
 
-sdio_device_errata_t *sdio_device_errata( sdio_dev_t * const dev, sdio_device_errata_t * const erratas )
+sdio_device_errata_t *sdio_device_errata( sdio_dev_t *dev, sdio_device_errata_t *erratas )
 {
 	sdio_cid_t				*cid;
 	sdio_ecsd_t		*ecsd;
@@ -487,11 +473,11 @@ sdio_device_errata_t *sdio_device_errata( sdio_dev_t * const dev, sdio_device_er
 	ecsd	= &dev->ecsd;
 	for( errata = erratas; errata->pnm; errata++ ) {
 		if( !strncmp( cid->pnm, errata->pnm, strlen( errata->pnm ) ) ) {
-			if( ( ( cid->mid == errata->mid ) || ( errata->mid == DEV_ERRATA_WILDCARD ) ) &&
-					( ( cid->oid == errata->oid ) || ( errata->oid == DEV_ERRATA_WILDCARD ) ) &&
-					( ( ecsd->ext_csd_rev == errata->erev ) || ( errata->erev == DEV_ERRATA_WILDCARD ) ) &&
-					( cid->prv >= errata->prv_s ) && ( cid->prv <= errata->prv_e ) ) {
-				sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, 1, 1, "%s:  pnm %s, mid 0x%x, oid 0x%x, rev 0x%x:0x%x, errata 0x%x, rsettle %dms", __FUNCTION__, errata->pnm, errata->mid, errata->oid, errata->prv_s, errata->prv_e, errata->errata, errata->rsettle );
+			if( ( cid->mid == errata->mid || errata->mid == DEV_ERRATA_WILDCARD ) &&
+					( cid->oid == errata->oid || errata->oid == DEV_ERRATA_WILDCARD ) &&
+					( ecsd->ext_csd_rev == errata->erev || errata->erev == DEV_ERRATA_WILDCARD ) &&
+					cid->prv >= errata->prv_s && cid->prv <= errata->prv_e ) {
+				sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, 1, 1, "%s:  pnm %s, mid 0x%x, oid 0x%x, rev 0x%x:0x%x, errata 0x%x, rsettle %dms", __FUNCTION__, errata->pnm, errata->mid, errata->oid, errata->prv_s, errata->prv_e, errata->errata, errata->rsettle );
 				return( errata );
 			}
 		}
@@ -500,21 +486,21 @@ sdio_device_errata_t *sdio_device_errata( sdio_dev_t * const dev, sdio_device_er
 	return( NULL );
 }
 
-int sdio_reconcile_errata( sdio_dev_t * const dev, sdio_device_errata_t * const errata )
+int sdio_reconcile_errata( sdio_dev_t *dev, sdio_device_errata_t *errata )
 {
 	sdio_hc_t	*hc;
 
 	hc = dev->hc;
 
 	if( ( errata->errata & DEV_ERRATA_ACMD12 ) ) {
-		sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, 1, 1, "%s:  disabling ACMD12", __FUNCTION__ );
+		sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, 1, 1, "%s:  disabling ACMD12", __FUNCTION__ );
 		hc->caps &= ~HC_CAP_ACMD12;
 	}
 
 	return( EOK );
 }
 
-static int sdio_pwr( sdio_hc_t * const hc, const uint32_t vdd )
+static int sdio_pwr( sdio_hc_t *hc, int vdd )
 {
 	int					bpos;
 	static const char	*name[] = { "0.0", "", "", "", "", "", "", "1.7-1.9",
@@ -526,36 +512,36 @@ static int sdio_pwr( sdio_hc_t * const hc, const uint32_t vdd )
 		bpos--;
 	}
 
-	sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, hc->cfg.verbosity, 1, "%s:  vdd %s (0x%x)", __FUNCTION__, name[bpos], vdd );
+	sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 1, "%s:  vdd %s (0x%x)", __FUNCTION__, name[bpos], vdd );
 	return( hc->entry.pwr( hc, vdd ) );
 }
 
-int sdio_drv_type( sdio_hc_t * const hc, const uint32_t drv_type )
+int sdio_drv_type( sdio_hc_t *hc, int drv_type )
 {
 	static const char	*name[5] = { "B", "A", "C", "", "D" };
 
-	sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, hc->cfg.verbosity, 1, "%s:  type %s", __FUNCTION__, name[drv_type >> 1] );
+	sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 1, "%s:  type %s", __FUNCTION__, name[drv_type >> 1] );
 
 	return( hc->entry.drv_type( hc, drv_type ) );
 }
 
-int sdio_bus_mode( sdio_hc_t * const hc, const uint32_t bus_mode )
+int sdio_bus_mode( sdio_hc_t *hc, int bus_mode )
 {
-	sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, hc->cfg.verbosity, 1, "%s:  mode %s", __FUNCTION__, bus_mode ? "push pull" : "open drain" );
+	sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 1, "%s:  mode %s", __FUNCTION__, bus_mode ? "push pull" : "open drain" );
 
 	return( hc->entry.bus_mode( hc, bus_mode ) );
 }
 
-int sdio_bus_width( sdio_hc_t * const hc, const uint32_t bus_width )
+int sdio_bus_width( sdio_hc_t *hc, int bus_width )
 {
-	sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, hc->cfg.verbosity, 1, "%s:  width %d", __FUNCTION__, bus_width );
+	sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 1, "%s:  width %d", __FUNCTION__, bus_width );
 
 	return( hc->entry.bus_width( hc, bus_width ) );
 }
 
-int sdio_clock( sdio_hc_t * const hc, uint32_t clk )
+int sdio_clock( sdio_hc_t *hc, int clk )
 {
-	sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, hc->cfg.verbosity, 1, "%s:  clk %d", __FUNCTION__, clk );
+	sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 1, "%s:  clk %d", __FUNCTION__, clk );
 
 	if( clk < hc->clk_min ) {
 		return( EINVAL );
@@ -568,25 +554,25 @@ int sdio_clock( sdio_hc_t * const hc, uint32_t clk )
 	return( hc->entry.clk( hc, clk ) );
 }
 
-int sdio_timing( sdio_hc_t * const hc, const uint32_t timing )
+int sdio_timing( sdio_hc_t *hc, int timing )
 {
 	static const char	*name[11] = { "INVALID", "LS", "HS", "HS DDR50", "SDR12", "SDR25", "SDR50", "SDR104", "HS200", "HS400", "HS400ES" };
 
-	sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, hc->cfg.verbosity, 1, "%s:  timing %s", __FUNCTION__, name[timing] );
+	sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 1, "%s:  timing %s", __FUNCTION__, name[timing] );
 
 	return( hc->entry.timing( hc, timing ) );
 }
 
-int sdio_signal_voltage( sdio_hc_t * const hc, const uint32_t voltage )
+int sdio_signal_voltage( sdio_hc_t *hc, int voltage )
 {
 	static const char	*name[5] = { "0.0", "3.3", "3.0", "1.8", "1.2" };
 
-	sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, hc->cfg.verbosity, 1, "%s:  %sV", __FUNCTION__, name[voltage] );
+	sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 1, "%s:  %sV", __FUNCTION__, name[voltage] );
 
 	return( hc->entry.signal_voltage( hc, voltage ) );
 }
 
-int _sdio_pwrmgnt( sdio_dev_t * const dev, uint32_t pm )
+int _sdio_pwrmgnt( sdio_dev_t *dev, int pm )
 {
 	sdio_hc_t	*hc;
 	int			status;
@@ -594,13 +580,13 @@ int _sdio_pwrmgnt( sdio_dev_t * const dev, uint32_t pm )
 	hc		= dev->hc;
 	status	= EOK;
 
-	if( ( hc->entry.pm == NULL ) || ( pm == hc->pm_state ) || hc->wspc.cmd ) {
+	if( hc->entry.pm == NULL || pm == hc->pm_state || hc->wspc.cmd ) {
 		return( EOK );
 	}
 
 	switch( pm ) {
 		case PM_IDLE:
-//			sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, hc->cfg.verbosity, 3, "%s: idle", __FUNCTION__ );
+//			sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 3, "%s: idle", __FUNCTION__ );
 
 			if( hc->pm_state == PM_ACTIVE ) {
 				hc->entry.pm( hc, pm );
@@ -611,24 +597,15 @@ int _sdio_pwrmgnt( sdio_dev_t * const dev, uint32_t pm )
 			break;
 
 		case PM_ACTIVE:
-//			sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, hc->cfg.verbosity, 3, "%s (path %d): active", __FUNCTION__, hc->path );
+//			sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 3, "%s (path %d): active", __FUNCTION__, hc->path );
 
 			hc->entry.pm( hc, pm );
-			if( hc->pm_state == PM_SUSPEND ) {
-				hc->pm_state = pm;
-				_sdio_reset( dev );
 
-					// start change detect timer
-				if( !( hc->caps & HC_CAP_CD_INTR ) && !( hc->caps & HC_CAP_SLOT_TYPE_EMBEDDED ) ) {
-					sdio_timer_settime( sdio_ctrl.cd_timerid, SDIO_CD_INTERVAL, 0, SDIO_TRUE );
-				}
-			}
-			else if( ( hc->pm_state == PM_SLEEP ) && ( hc->caps & HC_CAP_SLEEP ) ) {
-				sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, hc->cfg.verbosity, 3, "%s (path %d): sleep to active", __FUNCTION__, hc->path );
+			if( hc->pm_state == PM_SLEEP && ( hc->caps & HC_CAP_SLEEP ) ) {
+				sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 3, "%s (path %d): sleep to active", __FUNCTION__, hc->path );
 				hc->pm_state = pm;
 				if( ( dev->caps & DEV_CAP_SLEEP ) ) {
-					status = mmc_sleep_awake( dev, 0 );
-					if( status == EOK ) {
+					if( ( status = mmc_sleep_awake( dev, 0 ) ) == EOK ) {
 						status = sdio_select_card( dev, dev->rca );
 					}
 					if( status ) {
@@ -642,19 +619,10 @@ int _sdio_pwrmgnt( sdio_dev_t * const dev, uint32_t pm )
 					}
 				}
 			}
-			else {
-				// nothing
-			}
-
-			if( hc->tuning_count ) {	// start tuning timer
-				if( sdio_timer_settime( hc->tuning_timerid, hc->tuning_count, 0, SDIO_FALSE ) ) {
-					sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, 1, 1, "%s: sdio_timer_settime (tuning start)", __FUNCTION__ );
-				}
-			}
 			break;
 
 		case PM_SLEEP:
-//			sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, hc->cfg.verbosity, 3, "%s: sleep", __FUNCTION__ );
+// 			sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 3, "%s: sleep", __FUNCTION__ );
 
 			if( hc->pm_state == PM_IDLE ) {		// wakeup when idle to deselect
 				hc->entry.pm( hc, PM_ACTIVE );
@@ -662,14 +630,17 @@ int _sdio_pwrmgnt( sdio_dev_t * const dev, uint32_t pm )
 
 			if( ( hc->caps & HC_CAP_SLEEP ) ) {
 				if( ( dev->caps & DEV_CAP_SLEEP ) ) {
+					if( ( dev->flags & DEV_FLAG_WCE ) ) {
+						if( ( status = mmc_cache( dev, SDIO_CACHE_FLUSH, SDIO_TIME_DEFAULT * 5 ) ) ) {
+							sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 0, "%s: cache flush fail %s", __FUNCTION__, strerror( status ) );
+						}
+					}
+
 					if( status == EOK ) {
-						status = sdio_select_card( dev, 0 );
-						if( status == EOK ) {
+						if( ( status = sdio_select_card( dev, 0 ) ) == EOK ) {
 // Should we wait for STANDBY state before putting the device to sleep?
 //							if( ( status = _sdio_wait_card_status( dev, NULL, CDS_CUR_STATE_MSK, CDS_CUR_STATE_STANDBY, SDIO_TIME_DEFAULT ) ) == EOK ) {
-								if( ( dev->dtype == DEV_TYPE_MMC ) ) {
-									status = mmc_sleep_awake( dev, 1 );
-								}
+								status = mmc_sleep_awake( dev, 1 );
 //							}
 						}
 
@@ -678,35 +649,15 @@ int _sdio_pwrmgnt( sdio_dev_t * const dev, uint32_t pm )
 						}
 					}
 				}
-
 				if( status ) {
 					pm = PM_IDLE;							// set state back to idle
 					sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 0, "%s: sleep fail", __FUNCTION__ );
 				}
 				else {
-					if( hc->tuning_count ) {				// stop tuning timer
-						if( sdio_timer_settime( hc->tuning_timerid, 0, 0, SDIO_FALSE ) ) {
-							sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, 1, 1, "%s: sdio_timer_settime (tuning stop)", __FUNCTION__ );
-						}
-					}
-					sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, hc->cfg.verbosity, 3, "%s (path %d): sleep hc cnt %"PRId64"", __FUNCTION__, hc->path, ++hc->pm_sleep_cnt );
+					sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 3, "%s (path %d): sleep hc cnt %"PRId64"", __FUNCTION__, hc->path, ++hc->pm_sleep_cnt );
 				}
 				hc->entry.pm( hc, pm );
 			}
-			break;
-
-		case PM_SUSPEND:
-			if( hc->tuning_count ) {				// stop tuning timer
-				if( sdio_timer_settime( hc->tuning_timerid, 0, 0, SDIO_FALSE ) ) {
-					sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, 1, 1, "%s: sdio_timer_settime (tuning stop)", __FUNCTION__ );
-				}
-			}
-				// stop change detect timer
-			if( !( hc->caps & HC_CAP_CD_INTR ) && !( hc->caps & HC_CAP_SLOT_TYPE_EMBEDDED ) ) {
-				sdio_timer_settime( sdio_ctrl.cd_timerid, 0, 0, SDIO_FALSE );
-			}
-
-			hc->entry.pm( hc, pm );
 			break;
 
 		default:
@@ -718,7 +669,7 @@ int _sdio_pwrmgnt( sdio_dev_t * const dev, uint32_t pm )
 	return( status );
 }
 
-int sdio_select_voltage( sdio_hc_t *hc, uint32_t ocr )
+int sdio_select_voltage( sdio_hc_t *hc, int ocr )
 {
 	sdio_dev_t *dev;
 	int			bpos;
@@ -728,7 +679,7 @@ int sdio_select_voltage( sdio_hc_t *hc, uint32_t ocr )
 	dev = &hc->device;
 
 	if( ( bpos = ffs( ocr ) ) ) {
-		ocr = 1U << ( bpos - 1 );
+		ocr = 1 << ( bpos - 1 );
 		status = sdio_pwr( hc, ocr );
 	}
 	else {
@@ -741,13 +692,13 @@ int sdio_select_voltage( sdio_hc_t *hc, uint32_t ocr )
 	return( status );
 }
 
-int sdio_tune( sdio_hc_t * const hc, const uint32_t cmd )
+int sdio_tune( sdio_hc_t *hc, int cmd )
 {
 	int	status;
 
 	status = EOK;
 
-	sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, hc->cfg.verbosity, 1, "%s:", __FUNCTION__ );
+	sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 1, "%s:", __FUNCTION__ );
 
 	if( hc->entry.tune ) {
 		status = hc->entry.tune( hc, cmd );
@@ -756,7 +707,7 @@ int sdio_tune( sdio_hc_t * const hc, const uint32_t cmd )
 	return( status );
 }
 
-int sdio_preset( sdio_hc_t * const hc, const uint32_t state )
+int sdio_preset( sdio_hc_t *hc, int state )
 {
 	int	status;
 
@@ -769,18 +720,11 @@ int sdio_preset( sdio_hc_t * const hc, const uint32_t state )
 	return( status );
 }
 
-static int sdio_power( sdio_hc_t *hc, const uint32_t pwr )
+static int sdio_power( sdio_hc_t *hc, int pwr )
 {
 	switch( pwr ) {
 		case SDIO_PWR_ON:
-				// set a few defaults
-			hc->clk				= hc->clk_init;
-			hc->timing			= TIMING_LS;
-			hc->bus_width		= BUS_WIDTH_1;
-			hc->bus_mode		= BUS_MODE_OPEN_DRAIN;
-			hc->signal_voltage	= SIGNAL_VOLTAGE_3_3;
-
-			sdio_pwr( hc, 1U << ( fls( (int)hc->ocr ) - 1 ) );
+			sdio_pwr( hc, 1 << ( fls( hc->ocr ) - 1 ) );
 			sdio_clock( hc, hc->clk_init );
 			sdio_bus_width( hc, BUS_WIDTH_1 );
 			sdio_preset( hc, SDIO_FALSE );
@@ -799,7 +743,7 @@ static int sdio_power( sdio_hc_t *hc, const uint32_t pwr )
 	return( EOK );
 }
 
-int _sdio_send_status( sdio_dev_t * const dev, uint32_t * const rsp, const int hpi )
+int _sdio_send_status( sdio_dev_t *dev, uint32_t *rsp, int hpi )
 {
 	struct sdio_cmd		*cmd;
 	uint32_t			arg;
@@ -807,16 +751,15 @@ int _sdio_send_status( sdio_dev_t * const dev, uint32_t * const rsp, const int h
 
 	memset( rsp, 0, SDIO_RSP_SIZE );
 
-	cmd = sdio_alloc_cmd( );
-	if( cmd == NULL ) {
+	if( ( cmd = sdio_alloc_cmd( ) ) == NULL ) {
 		return( ENOMEM );
 	}
 
 	arg = ( dev->rca << 16 ) | ( hpi ? MMC_SEND_STATUS_HPI: 0 );
 
 	sdio_setup_cmd( cmd, SCF_CTYPE_AC | SCF_RSP_R1, MMC_SEND_STATUS, arg );
-	status = _sdio_send_cmd( dev, cmd, NULL, SDIO_TIME_DEFAULT, SDIO_CMD_RETRIES );
-	if( status == EOK ) {
+
+	if( ( status = _sdio_send_cmd( dev, cmd, NULL, SDIO_TIME_DEFAULT, SDIO_CMD_RETRIES ) ) == EOK ) {
 		memcpy( rsp, cmd->rsp, sizeof( cmd->rsp ) );
 	}
 
@@ -825,23 +768,20 @@ int _sdio_send_status( sdio_dev_t * const dev, uint32_t * const rsp, const int h
 	return( status );
 }
 
-int sdio_send_csd( sdio_dev_t * const dev, uint32_t *csd )
+int sdio_send_csd( sdio_dev_t *dev, uint32_t *csd )
 {
 	struct sdio_cmd		*cmd;
-	int					status;
+	int				status;
 
-	cmd = sdio_alloc_cmd( );
-	if( cmd == NULL ) {
+	if( ( cmd = sdio_alloc_cmd( ) ) == NULL ) {
 		return( ENOMEM );
 	}
 
 	sdio_setup_cmd( cmd, SCF_CTYPE_AC | SCF_RSP_R2, MMC_SEND_CSD, dev->rca << 16 );
-	status = _sdio_send_cmd( dev, cmd, NULL, SDIO_TIME_DEFAULT, SDIO_CMD_RETRIES );
-	if( status == EOK ) {
-		csd[0] = cmd->rsp[0];
-		csd[1] = cmd->rsp[1];
-		csd[2] = cmd->rsp[2];
-		csd[3] = cmd->rsp[3];
+
+	if( ( status = _sdio_send_cmd( dev, cmd, NULL, SDIO_TIME_DEFAULT, SDIO_CMD_RETRIES ) ) == EOK ) {
+		csd[0] = cmd->rsp[0]; csd[1] = cmd->rsp[1];
+		csd[2] = cmd->rsp[2]; csd[3] = cmd->rsp[3];
 	}
 
 	sdio_free_cmd( cmd );
@@ -849,20 +789,21 @@ int sdio_send_csd( sdio_dev_t * const dev, uint32_t *csd )
 	return( status );
 }
 
-int sdio_select_card( sdio_dev_t *dev, const uint32_t rca )
+int sdio_select_card( sdio_dev_t *dev, int rca )
 {
 	struct sdio_cmd		*cmd;
 	int					status;
 
-	cmd = sdio_alloc_cmd( );
-	if( cmd == NULL ) {
+	if( ( cmd = sdio_alloc_cmd( ) ) == NULL ) {
 		return( ENOMEM );
 	}
 
 	sdio_setup_cmd( cmd, SCF_CTYPE_AC | ( rca ? SCF_RSP_R1: SCF_RSP_NONE ),
 							MMC_SEL_DES_CARD, rca << 16 );
 
-	status = _sdio_send_cmd( dev, cmd, NULL, SDIO_TIME_DEFAULT, SDIO_CMD_RETRIES );
+	if( ( status = _sdio_send_cmd( dev, cmd, NULL, SDIO_TIME_DEFAULT, SDIO_CMD_RETRIES ) ) == EOK ) {
+
+	}
 
 	if( ( cmd->rsp[0] & CDS_CARD_IS_LOCKED ) ) {
 		dev->flags |= DEV_FLAG_LOCKED;
@@ -873,27 +814,29 @@ int sdio_select_card( sdio_dev_t *dev, const uint32_t rca )
 	return( status );
 }
 
-int _sdio_stop_transmission( sdio_dev_t * const dev, const int hpi )
+int _sdio_stop_transmission( sdio_dev_t *dev, int hpi )
 {
 	struct sdio_cmd		*cmd;
 	uint32_t			arg;
 	int					status;
 
-	cmd = sdio_alloc_cmd( );
-	if( cmd == NULL ) {
+	if( ( cmd = sdio_alloc_cmd( ) ) == NULL ) {
 		return( ENOMEM );
 	}
 
 	arg = hpi ? ( ( dev->rca << 16 ) | MMC_STOP_TRANSMISSION_HPI ): 0;
 
 	sdio_setup_cmd( cmd, SCF_CTYPE_AC | SCF_RSP_R1B, MMC_STOP_TRANSMISSION, arg );
-	status = _sdio_send_cmd( dev, cmd, NULL, SDIO_TIME_DEFAULT, 0 /* SDIO_CMD_RETRIES */ );
+	if( ( status = _sdio_send_cmd( dev, cmd, NULL, SDIO_TIME_DEFAULT, 0 /* SDIO_CMD_RETRIES */ ) ) == EOK ) {
+
+	}
+
 	sdio_free_cmd( cmd );
 
 	return( status );
 }
 
-int _sdio_set_block_length( sdio_dev_t *dev, const uint32_t blklen )
+int _sdio_set_block_length( sdio_dev_t *dev, int blklen )
 {
 	struct sdio_cmd		*cmd;
 	int					status;
@@ -907,14 +850,12 @@ int _sdio_set_block_length( sdio_dev_t *dev, const uint32_t blklen )
 		return( EOK );
 	}
 
-	cmd = sdio_alloc_cmd( );
-	if( cmd == NULL ) {
+	if( ( cmd = sdio_alloc_cmd( ) ) == NULL ) {
 		return( ENOMEM );
 	}
 
 	sdio_setup_cmd( cmd, SCF_CTYPE_AC | SCF_RSP_R1, MMC_SET_BLOCKLEN, blklen );
-	status = _sdio_send_cmd( dev, cmd, NULL, SDIO_TIME_DEFAULT, SDIO_CMD_RETRIES );
-	if( status == EOK ) {
+	if( ( status = _sdio_send_cmd( dev, cmd, NULL, SDIO_TIME_DEFAULT, SDIO_CMD_RETRIES ) ) == EOK ) {
 		dev->block_length = blklen;
 	}
 
@@ -923,57 +864,46 @@ int _sdio_set_block_length( sdio_dev_t *dev, const uint32_t blklen )
 	return( status );
 }
 
-int _sdio_set_block_count( sdio_dev_t * const dev, const uint32_t blkcnt, const uint32_t flgs )
+int _sdio_set_block_count( sdio_dev_t *dev, int blkcnt, uint32_t flgs )
 {
 	struct sdio_cmd		*cmd;
 	int					status;
 
-	cmd = sdio_alloc_cmd( );
-	if( cmd == NULL ) {
+	if( ( cmd = sdio_alloc_cmd( ) ) == NULL ) {
 		return( ENOMEM );
 	}
 
 	sdio_setup_cmd( cmd, SCF_CTYPE_AC | SCF_RSP_R1, MMC_SET_BLOCK_COUNT, blkcnt | flgs );
-	status = _sdio_send_cmd( dev, cmd, NULL, SDIO_TIME_DEFAULT, 0 );
+	if( ( status = _sdio_send_cmd( dev, cmd, NULL, SDIO_TIME_DEFAULT, 0 ) ) == EOK ) {
+
+	}
+
 	sdio_free_cmd( cmd );
-
-	return( status );
-}
-
-int _sdio_cache( sdio_dev_t * const dev, const int op, const uint32_t timeout )
-{
-	int			status;
-
-	if( ( dev->dtype == DEV_TYPE_MMC ) ) {
-		status = mmc_cache( dev, op, timeout );
-	}
-	else {
-		status = sd_cache( dev, op, timeout );
-	}
 
 	return( status );
 }
 
 __attribute__((used))
-static int sdio_set_upper_addr( sdio_dev_t * const dev, const uint32_t ua )
+static int sdio_set_upper_addr( sdio_dev_t *dev, uint32_t ua )
 {
 	struct sdio_cmd		*cmd;
 	int					status;
 
-	cmd = sdio_alloc_cmd( );
-	if( cmd == NULL ) {
+	if( ( cmd = sdio_alloc_cmd( ) ) == NULL ) {
 		return( ENOMEM );
 	}
 
 	sdio_setup_cmd( cmd, SCF_CTYPE_AC | SCF_RSP_R1, SD_SET_UPPER_ADDR, ua );
-	status = _sdio_send_cmd( dev, cmd, NULL, SDIO_TIME_DEFAULT, 0 );
+	if( ( status = _sdio_send_cmd( dev, cmd, NULL, SDIO_TIME_DEFAULT, 0 ) ) == EOK ) {
+
+	}
 
 	sdio_free_cmd( cmd );
 
 	return( status );
 }
 
-static void sdio_rsp( sdio_dev_t * const dev, uint32_t * const rsp )
+static void sdio_rsp( sdio_dev_t *dev, uint32_t *rsp )
 {
 	sdio_hc_t			*hc;
 	static const char	*state[16] = {	"IDLE", "READY", "IDENT", "STANDBY",
@@ -981,9 +911,9 @@ static void sdio_rsp( sdio_dev_t * const dev, uint32_t * const rsp )
 
 	hc		= dev->hc;
 
-	sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, hc->cfg.verbosity, 3, "rsp 0x%x state %s %s", rsp[0], state[ CDS_CUR_STATE( rsp[0] ) ], ( rsp[0] & CDS_READY_FOR_DATA ) ? "Ready for DATA" : "" );
+	sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 3, "rsp 0x%x state %s %s", rsp[0], state[ CDS_CUR_STATE( rsp[0] ) ], ( rsp[0] & CDS_READY_FOR_DATA ) ? "Ready for DATA" : "" );
 
-	sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, hc->cfg.verbosity, 3, "%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s",
+	sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 3, "%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s\n",
 		(rsp[0] & CDS_OUT_OF_RANGE			) ? "OOR " : "",
 		(rsp[0] & CDS_ADDRESS_ERROR			) ? "ADDR" : "",
 		(rsp[0] & CDS_BLOCK_LEN_ERROR		) ? "BLEN " : "",
@@ -1008,7 +938,7 @@ static void sdio_rsp( sdio_dev_t * const dev, uint32_t * const rsp )
 		(rsp[0] & CDS_APP_CMD_S				) ? "APP " : "" );
 }
 
-int _sdio_wait_card_status( sdio_dev_t * const dev, uint32_t *rsp, const uint32_t mask, const uint32_t val, uint32_t msec )
+int _sdio_wait_card_status( sdio_dev_t *dev, uint32_t *rsp, uint32_t mask, uint32_t val, uint32_t msec )
 {
 	sdio_hc_t	*hc;
 	int			status;
@@ -1019,8 +949,7 @@ int _sdio_wait_card_status( sdio_dev_t * const dev, uint32_t *rsp, const uint32_
 	rsp		= rsp ? rsp : resp;
 
 	for( msec = max( msec, 1 ); msec; msec-- ) {
-		status = _sdio_send_status( dev, rsp, SDIO_FALSE );
-		if( status != EOK ) {
+		if( ( status = _sdio_send_status( dev, rsp, SDIO_FALSE ) ) != EOK ) {
 			break;
 		}
 
@@ -1029,13 +958,11 @@ int _sdio_wait_card_status( sdio_dev_t * const dev, uint32_t *rsp, const uint32_
 		}
 
 		if( ( rsp[0] & CDS_ERROR_MSK ) ) {
-			status = EIO;
-			break;
+			status = EIO; break;
 		}
 
 		if( ( rsp[0] & mask ) == val ) {
-			status = EOK;
-			break;
+			status = EOK; break;
 		}
 
 		delay( 1 );
@@ -1050,7 +977,7 @@ int _sdio_wait_card_status( sdio_dev_t * const dev, uint32_t *rsp, const uint32_
 	return( status );
 }
 
-static uint64_t sdio_erase_timeout( sdio_dev_t * const dev, const uint32_t etype, const uint32_t nlba )
+static uint64_t sdio_erase_timeout( sdio_dev_t *dev, uint32_t etype, uint32_t nlba )
 {
 	uint64_t		timeout;
 
@@ -1064,31 +991,27 @@ static uint64_t sdio_erase_timeout( sdio_dev_t * const dev, const uint32_t etype
 	return( max( timeout, 1000 ) );
 }
 
-int _sdio_lock_unlock( sdio_dev_t *dev, const int op, uint8_t * const pwd, const uint32_t pwd_len )
+int _sdio_lock_unlock( sdio_dev_t *dev, int op, uint8_t *pwd, int pwd_len )
 {
 	struct sdio_cmd		*cmd;
 	sdio_sge_t			sge;
 	uint8_t				*ld;
-	uint32_t			len;
+	int					len;
 	int					status;
 	int					timeout;
 	uint32_t			rsp[4];
 
 	len = pwd_len + 2;	// +2 for op field, and pwd_len field
 
-	if( ( len & 0x1 ) ) {
-		len++;
-	}
+	if( len & 0x1 ) len++;
 
 	timeout = ( op & SD_LU_ERASE ) ? sdio_erase_timeout( dev, SD_ERASE_NORM, dev->csd.sectors ): SDIO_TIME_DEFAULT;
 
-	cmd = sdio_alloc_cmd( );
-	if( cmd == NULL ) {
+	if( ( cmd = sdio_alloc_cmd( ) ) == NULL ) {
 		return( ENOMEM );
 	}
 
-	ld = sdio_alloc( len );
-	if( ld == NULL ) {
+	if( ( ld = sdio_alloc( len ) ) == NULL ) {
 		sdio_free_cmd( cmd );
 		return( ENOMEM );
 	}
@@ -1099,27 +1022,25 @@ int _sdio_lock_unlock( sdio_dev_t *dev, const int op, uint8_t * const pwd, const
 		memcpy( &ld[2], pwd, pwd_len );
 	}
 
-	status = _sdio_set_block_length( dev, len );
-	if( status == EOK ) {
+	if( ( status = _sdio_set_block_length( dev, len ) ) == EOK ) {
 		sdio_setup_cmd( cmd, SCF_CTYPE_ADTC | SCF_RSP_R1, MMC_LOCK_UNLOCK, 0 );
-		sge.sg_count	= len;
-		sge.sg_address	= SDIO_DATA_PTR_P( ld );
+		sge.sg_count = len; sge.sg_address = SDIO_DATA_PTR_P( ld );
 		sdio_setup_cmd_io( cmd, SCF_DIR_OUT, 1, len, &sge, 1, NULL );
 
-		status = _sdio_send_cmd( dev, cmd, NULL, timeout, SDIO_CMD_RETRIES );
-		_sdio_set_block_length( dev, SDIO_DFLT_BLKSZ );
+		if( ( status = _sdio_send_cmd( dev, cmd, NULL, timeout, SDIO_CMD_RETRIES ) ) == EOK ) {
+		}
+
+		if( ( status = _sdio_set_block_length( dev, SDIO_DFLT_BLKSZ ) ) != EOK ) {
+		}
 	}
 
-	if( status == EOK ) {
-		status = _sdio_send_status( dev, rsp, SDIO_FALSE );
-		if( status  == EOK ) {
-			if( ( rsp[0] & CDS_CARD_IS_LOCKED ) ) {
-				atomic_set( &dev->flags, DEV_FLAG_LOCKED );
-			}
+	if( status == EOK && ( status = _sdio_send_status( dev, rsp, SDIO_FALSE ) ) == EOK ) {
+		if( ( rsp[0] & CDS_CARD_IS_LOCKED ) ) {
+			atomic_set( &dev->flags, DEV_FLAG_LOCKED );
+		}
 
-			if( ( dev->flags & DEV_FLAG_LOCKED ) && !( rsp[0] & CDS_CARD_IS_LOCKED ) ) {
-				atomic_clr( &dev->flags, DEV_FLAG_LOCKED );
-			}
+		if( ( dev->flags & DEV_FLAG_LOCKED ) && !( rsp[0] & CDS_CARD_IS_LOCKED ) ) {
+			atomic_clr( &dev->flags, DEV_FLAG_LOCKED );
 		}
 	}
 
@@ -1135,15 +1056,16 @@ int sdio_go_idle( sdio_hc_t *hc )
 	struct sdio_cmd		*cmd;
 	int					status;
 
-	cmd = sdio_alloc_cmd( );
-	if( cmd == NULL ) {
+	if( ( cmd = sdio_alloc_cmd( ) ) == NULL ) {
 		return( ENOMEM );
 	}
 
 	dev	= &hc->device;
 
 	sdio_setup_cmd( cmd, SCF_CTYPE_BC | SCF_RSP_NONE, MMC_GO_IDLE_STATE, 0 );
-	status = _sdio_send_cmd( dev, cmd, NULL, SDIO_TIME_DEFAULT, 0 );
+	if( ( status = _sdio_send_cmd( dev, cmd, NULL, SDIO_TIME_DEFAULT, 0 ) ) != EOK ) {
+	}
+
 	sdio_free_cmd( cmd );
 
 	return( status );
@@ -1155,20 +1077,16 @@ int sdio_all_send_cid( sdio_hc_t *hc, uint32_t *cid )
 	struct sdio_cmd	*cmd;
 	int				status;
 
-	cmd = sdio_alloc_cmd( );
-	if( cmd == NULL ) {
+	if( ( cmd = sdio_alloc_cmd( ) ) == NULL ) {
 		return( ENOMEM );
 	}
 
 	dev	= &hc->device;
 
 	sdio_setup_cmd( cmd, SCF_CTYPE_BCR | SCF_RSP_R2, MMC_ALL_SEND_CID, 0 );
-	status = _sdio_send_cmd( dev, cmd, NULL, SDIO_TIME_DEFAULT, SDIO_CMD_RETRIES );
-	if( status == EOK ) {
-		cid[0] = cmd->rsp[0];
-		cid[1] = cmd->rsp[1];
-		cid[2] = cmd->rsp[2];
-		cid[3] = cmd->rsp[3];
+	if( ( status = _sdio_send_cmd( dev, cmd, NULL, SDIO_TIME_DEFAULT, SDIO_CMD_RETRIES ) ) == EOK ) {
+		cid[0] = cmd->rsp[0]; cid[1] = cmd->rsp[1];
+		cid[2] = cmd->rsp[2]; cid[3] = cmd->rsp[3];
 	}
 
 	sdio_free_cmd( cmd );
@@ -1195,7 +1113,7 @@ int _sdio_reset( sdio_dev_t *dev )
 	hc->flags		|= HC_FLAG_RST;
 	hc->flags		&= ~HC_FLAG_SKIP_PWRUP;
 	dev->rca		= 0;
-	dev->pactive	= 0;
+	dev->pactive		= 0;
 	dev->flags		&= ~DEV_FLAG_WCE;
 
 	do {
@@ -1204,24 +1122,21 @@ int _sdio_reset( sdio_dev_t *dev )
 
 		switch( dev->dtype ) {
 			case DEV_TYPE_MMC:
-				status = mmc_init_device( hc, dev->ocr, SDIO_TRUE );
-				break;
+				status = mmc_init_device( hc, dev->ocr, SDIO_TRUE ); break;
 
 			case DEV_TYPE_SD:
-				status = sd_init_device( hc, dev->ocr, SDIO_TRUE );
-				break;
+				status = sd_init_device( hc, dev->ocr, SDIO_TRUE ); break;
 
 			default:
-				status = ENXIO;
-				break;
+				status = ENXIO; break;
 		}
 
-		if( status == ENXIO ) {						// device has been removed
+		if( status == ENXIO ) {					// device has been removed
 			sdio_hc_event( hc, HC_EV_CD );
 			break;
 		}
 
-	} while( --retry && ( status != EOK ) );
+	} while( --retry && status != EOK );
 
 	hc->flags &= ~HC_FLAG_RST;
 
@@ -1230,20 +1145,20 @@ int _sdio_reset( sdio_dev_t *dev )
 
 int _sdio_retune( sdio_hc_t *hc )
 {
-	int			status;
-
-	status = EOK;
+	struct itimerspec	value;
+	int				status;
 
 	if( hc->tuning_count ) {
-		if( sdio_timer_settime( hc->tuning_timerid, hc->tuning_count, 0, SDIO_FALSE ) ) {
-			sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, 1, 1, "%s: sdio_timer_settime (tuning start)", __FUNCTION__ );
+		memset( &value, 0, sizeof( value ) );
+		value.it_value.tv_sec	= hc->tuning_count;
+		if( timer_settime( hc->tuning_timerid, 0, &value, NULL ) == -1 ) {
+			sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, 1, 1, "%s: timer_settime", __FUNCTION__ );
 		}
 	}
 
 	if( hc->device.dtype == DEV_TYPE_MMC ) {
 		status = mmc_retune( hc );
-	}
-	else {
+	} else {
 		status = sdio_tune( hc, SD_SEND_TUNING_BLOCK );
 	}
 
@@ -1252,7 +1167,7 @@ int _sdio_retune( sdio_hc_t *hc )
 	return( status );
 }
 
-int sdio_wait_cmd( sdio_hc_t *hc, struct sdio_cmd * const cmd, const uint64_t tms )
+int sdio_wait_cmd( sdio_hc_t *hc, struct sdio_cmd *cmd, uint64_t tms )
 {
 	uint64_t		ct;
 	int				status;
@@ -1265,8 +1180,7 @@ int sdio_wait_cmd( sdio_hc_t *hc, struct sdio_cmd * const cmd, const uint64_t tm
 
 	pthread_mutex_lock( &hc->mutex );
 	while( cmd->status == CS_CMD_INPROG ) {
-		status = pthread_cond_timedwait( &hc->cond, &hc->mutex, &abstime );
-		if( status == ETIMEDOUT ) {
+		if( ( status = pthread_cond_timedwait( &hc->cond, &hc->mutex, &abstime ) ) == ETIMEDOUT ) {
 			sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 0, "%s: TIMEOUT %"PRId64"ms (errno %d) CMD %d, flgs 0x%x, arg 0x%x, blks %d, blksz %d",
 				__FUNCTION__, tms, status, cmd->opcode, cmd->flags, cmd->arg, cmd->blks, cmd->blksz );
 			break;
@@ -1277,7 +1191,7 @@ int sdio_wait_cmd( sdio_hc_t *hc, struct sdio_cmd * const cmd, const uint64_t tm
 	return( status );
 }
 
-int sdio_issue_cmd( sdio_dev_t * const dev, struct sdio_cmd *cmd, const uint64_t tms )
+int sdio_issue_cmd( sdio_dev_t *dev, struct sdio_cmd *cmd, uint64_t tms )
 {
 	sdio_hc_t		*hc;
 	int				status;
@@ -1289,15 +1203,14 @@ int sdio_issue_cmd( sdio_dev_t * const dev, struct sdio_cmd *cmd, const uint64_t
 #endif
 
 	if( hc->cfg.verbosity > 3 ) {
-		sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, hc->cfg.verbosity, 3, "%s: CMD %d, flgs 0x%x, arg 0x%x, blks %d, blksz %d, timeout %" PRId64 "ms", __FUNCTION__, cmd->opcode, cmd->flags, cmd->arg, cmd->blks, cmd->blksz, tms );
+		sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 3, "%s: CMD %d, flgs 0x%x, arg 0x%x, blks %d, blksz %d, timeout %" PRId64 "ms", __FUNCTION__, cmd->opcode, cmd->flags, cmd->arg, cmd->blks, cmd->blksz, tms );
 	}
 
 	pthread_mutex_lock( &hc->mutex );
 	hc->wspc.cmd	= cmd;
 	pthread_mutex_unlock( &hc->mutex );
 
-	status = hc->entry.cmd( hc, cmd );
-	if( status == EOK ) {
+	if( ( status = hc->entry.cmd( hc, cmd ) ) == EOK ) {
 		status = sdio_wait_cmd( hc, cmd, tms );
 	}
 
@@ -1313,7 +1226,7 @@ int sdio_issue_cmd( sdio_dev_t * const dev, struct sdio_cmd *cmd, const uint64_t
 }
 
 // hc callback for command completion
-int sdio_cmd_cmplt( sdio_hc_t *hc, struct sdio_cmd *cmd, const uint32_t status )
+int sdio_cmd_cmplt( sdio_hc_t *hc, struct sdio_cmd *cmd, int status )
 {
 	static const char	*name[12] = { 	"IN PROG", "SUCCESS", "ABORTED", "ERR", "CMD IDX ERR",
 										"CMD TO ERR", "CMD CRC ERR", "CMD END ERR",
@@ -1324,7 +1237,7 @@ int sdio_cmd_cmplt( sdio_hc_t *hc, struct sdio_cmd *cmd, const uint32_t status )
 #endif
 
 	if( hc->cfg.verbosity > 3 ) {
-		sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, hc->cfg.verbosity, 4, "%s: CMD %d, flgs 0x%x, arg 0x%x, blks %d, blksz %d, status %s (%d)", __FUNCTION__, cmd->opcode, cmd->flags, cmd->arg, cmd->blks, cmd->blksz, name[status], status );
+		sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 4, "%s: CMD %d, flgs 0x%x, arg 0x%x, blks %d, blksz %d, status %s (%d)", __FUNCTION__, cmd->opcode, cmd->flags, cmd->arg, cmd->blks, cmd->blksz, name[status], status );
 	}
 
 	pthread_mutex_lock( &hc->mutex );
@@ -1336,42 +1249,30 @@ int sdio_cmd_cmplt( sdio_hc_t *hc, struct sdio_cmd *cmd, const uint32_t status )
 	return( EOK );
 }
 
-int _sdio_send_cmd( sdio_dev_t * const dev, struct sdio_cmd *cmd,
+int _sdio_send_cmd( sdio_dev_t *dev, struct sdio_cmd *cmd,
 		void (*func)( struct sdio_device *, sdio_cmd_t *, void *),
-		const uint32_t timeout, int retries )
+		uint32_t timeout, int retries )
 {
-	sdio_hc_t	*hc;
-	uint64_t	acmd_caps;
+	sdio_hc_t 	*hc;
 	int			status;
 
-	hc			= dev->hc;
-	acmd_caps	= 0;
+	hc = dev->hc;
 
-	status = _sdio_pwrmgnt( dev, PM_ACTIVE );
-	if( status != EOK ) {
+	if( ( status = _sdio_pwrmgnt( dev, PM_ACTIVE ) ) ) {
 		return( status );
-	}
-
-	if( ( cmd->flags & SCF_SBC_RLW ) ) {
-			// Reliable write is enabled via bit 31 in set block count,
-			// so temporarily disable HC ACMD12/ACMD23 features.
-		acmd_caps = hc->caps & ( HC_CAP_ACMD23 | HC_CAP_ACMD12 );
-		hc->caps &= ~( HC_CAP_ACMD23 | HC_CAP_ACMD12 );
 	}
 
 	do {
 		cmd->status = CS_CMD_INPROG;
 
 		if( ( cmd->flags & SCF_APP_CMD ) ) {
-			status = sd_app_cmd( dev );
-			if( status != EOK ) {
+			if( ( status = sd_app_cmd( dev ) ) ) {
 				break;
 			}
 		}
 
 		if( ( cmd->flags & SCF_SBC ) && !( hc->caps & HC_CAP_ACMD23 ) ) {
-			status = _sdio_set_block_count( dev, cmd->blks, ( cmd->flags & SCF_SBC_RLW ) ? SBC_RL_WRITE : 0 );
-			if( status != EOK ) {
+			if( ( status = _sdio_set_block_count( dev, cmd->blks, 0 ) ) ) {
 				break;
 			}
 		}
@@ -1384,41 +1285,31 @@ int _sdio_send_cmd( sdio_dev_t * const dev, struct sdio_cmd *cmd,
 		}
 #endif
 
-		status = sdio_issue_cmd( dev, cmd, timeout );
-		if( status != EOK ) {
-				// calling function should handle error recovery
+		if( ( status = sdio_issue_cmd( dev, cmd, timeout ) ) != EOK ) {
+			if( ( dev->flags & DEV_FLAG_PRESENT ) ) {
+//				_sdio_reset( dev );
+			}
 			break;
 		}
 
 		switch( cmd->status  ) {
 			case CS_CMD_CMP:
-				status = EOK;
-				break;
-
-			case CS_CMD_TO_ERR:
-				status = ETIMEDOUT;
-				break;
-
+				status = EOK; break;
 			case CS_CARD_REMOVED:
 				return( ENXIO );
-
 			case CS_DATA_CRC_ERR:
 				if( ( dev->flags & DEV_FLAG_PRESENT ) && !( hc->flags & HC_FLAG_RST )
 						&& ( dev->flags & ( DEV_FLAG_UHS | DEV_FLAG_HS200 | DEV_FLAG_HS400 ) ) ) {
 					atomic_set( &hc->flags, HC_FLAG_TUNE );
 				}
-				status = EIO;
-				break;
-
+				// fall through
 			default:
-				status = EIO;
-				break;
+				status = EIO; break;
 		}
 
 		if( status == EOK ) {
 			if( ( cmd->flags & SCF_WAIT_DRDY ) && !( hc->caps & HC_CAP_BSY ) ) {
-				status = _sdio_wait_card_status( dev, NULL, CDS_READY_FOR_DATA | CDS_CUR_STATE_MSK, CDS_READY_FOR_DATA | CDS_CUR_STATE_TRAN, timeout );
-				if( status != EOK ) {
+				if( ( status = _sdio_wait_card_status( dev, NULL, CDS_READY_FOR_DATA | CDS_CUR_STATE_MSK, CDS_READY_FOR_DATA | CDS_CUR_STATE_TRAN, timeout ) ) != EOK ) {
 					break;
 				}
 			}
@@ -1431,14 +1322,10 @@ int _sdio_send_cmd( sdio_dev_t * const dev, struct sdio_cmd *cmd,
 
 	} while( retries-- );
 
-	if( acmd_caps ) {				// Restore ACMD12/ACMD23 feature flags
-		hc->caps |= acmd_caps;
-	}
-
 	return( status );
 }
 
-int _sdio_bus_error( sdio_dev_t * const dev )
+int _sdio_bus_error( sdio_dev_t *dev )
 {
 	sdio_hc_t	*hc;
 	int			status;
@@ -1446,7 +1333,7 @@ int _sdio_bus_error( sdio_dev_t * const dev )
 	hc		= dev->hc;
 	status	= EOK;
 
-	sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, hc->cfg.verbosity, 1, "%s:  ", __FUNCTION__ );
+	sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 1, "%s:  ", __FUNCTION__ );
 
 	if( ++hc->bus_errs > SDIO_MAX_BUS_ERRS ) {
 #if 0
@@ -1456,14 +1343,11 @@ int _sdio_bus_error( sdio_dev_t * const dev )
 
 		switch( dev->dtype ) {
 			case DEV_TYPE_MMC:
-				status = mmc_bus_error( dev );
-				break;
+				status = mmc_bus_error( dev ); break;
 			case DEV_TYPE_SD:
-				status = sd_bus_error( dev );
-				break;
+				status = sd_bus_error( dev ); break;
 			default:
-				status = ENODEV;
-				break;
+				status = ENODEV; break;
 		}
 		hc->bus_errs = 0;
 	}
@@ -1497,8 +1381,7 @@ static int _sdio_attach( sdio_hc_t *hc )
 		}
 
 		if( !dtype || ( dtype & HC_FLAG_DEV_SD ) ) {
-			status = sd_ident( hc );
-			if( status == EOK ) {
+			if( ( status = sd_ident( hc ) ) == EOK ) {
 				_sdio_pwrmgnt( dev, PM_IDLE );
 				dev->flags |= DEV_FLAG_PRESENT;
 				dev->dtype = DEV_TYPE_SD;
@@ -1507,8 +1390,7 @@ static int _sdio_attach( sdio_hc_t *hc )
 		}
 
 		if( !dtype || ( dtype & HC_FLAG_DEV_MMC ) ) {
-			status = mmc_ident( hc );
-			if( status == EOK ) {
+			if( ( status = mmc_ident( hc ) ) == EOK ) {
 				_sdio_pwrmgnt( dev, PM_IDLE );
 				dev->flags |= DEV_FLAG_PRESENT;
 				dev->dtype = DEV_TYPE_MMC;
@@ -1542,106 +1424,68 @@ static int sdio_cd_info( sdio_hc_t *hc )
 	swcaps	= &dev->swcaps;
 
 		// CID
-	sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, cfg->verbosity, 0, "%s CID:", ( dev->dtype == DEV_TYPE_MMC ) ? "MMC" : "SD" );
-	sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, cfg->verbosity, 0, "  MID 0x%x, OID 0x%x, PNM %s", cid->mid, cid->oid, cid->pnm );
-	sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, cfg->verbosity, 0, "  PRV 0x%x, PSN 0x%x, MDT %d-%d",
+	sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, cfg->verbosity, 0, "%s CID:", dev->dtype == DEV_TYPE_MMC ? "MMC" : "SD" );
+	sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, cfg->verbosity, 0, "  MID 0x%x, OID 0x%x, PNM %s", cid->mid, cid->oid, cid->pnm );
+	sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, cfg->verbosity, 0, "  PRV 0x%x, PSN 0x%x, MDT %d-%d",
 				cid->prv, cid->psn, cid->month, cid->year );
 
 		// CSD
-	sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, cfg->verbosity, 0, "%s CSD:", ( dev->dtype == DEV_TYPE_MMC ) ? "MMC" : "SD" );
-	sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, cfg->verbosity, 0, "  CSD_STRUCTURE %d, SPEC_VERS %d, CCC 0x%x", csd->csd_structure, csd->spec_vers, csd->ccc );
-	sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, cfg->verbosity, 0, "  TAAC %d, NSAC %d, TRAN_SPEED %d", csd->taac, csd->nsac, csd->tran_speed );
-	sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, cfg->verbosity, 0, "  C_SIZE %d, C_SIZE_MULT %d", csd->c_size, csd->c_size_mult );
-	sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, cfg->verbosity, 0, "  READ_BL_LEN %d, WRITE_BL_LEN %d", csd->read_bl_len, csd->write_bl_len );
-	sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, cfg->verbosity, 0, "  ERASE GRP_SIZE %d, GRP_MULT %d, SIZE %d", csd->erase_grp_size, csd->erase_grp_mult, csd->sector_size );
-	sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, cfg->verbosity, 0, "  blksz %d, sectors %"PRIu64", dtr %d", csd->blksz, csd->sectors, csd->dtr_max );
+	sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, cfg->verbosity, 0, "%s CSD:", dev->dtype == DEV_TYPE_MMC ? "MMC" : "SD" );
+	sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, cfg->verbosity, 0, "  CSD_STRUCTURE %d, SPEC_VERS %d, CCC 0x%x", csd->csd_structure, csd->spec_vers, csd->ccc );
+	sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, cfg->verbosity, 0, "  TAAC %d, NSAC %d, TRAN_SPEED %d", csd->taac, csd->nsac, csd->tran_speed );
+	sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, cfg->verbosity, 0, "  C_SIZE %d, C_SIZE_MULT %d", csd->c_size, csd->c_size_mult );
+	sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, cfg->verbosity, 0, "  READ_BL_LEN %d, WRITE_BL_LEN %d", csd->read_bl_len, csd->write_bl_len );
+	sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, cfg->verbosity, 0, "  ERASE GRP_SIZE %d, GRP_MULT %d, SIZE %d", csd->erase_grp_size, csd->erase_grp_mult, csd->sector_size );
+	sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, cfg->verbosity, 0, "  blksz %d, sectors %"PRIu64", dtr %d", csd->blksz, csd->sectors, csd->dtr_max );
 
 	if( dev->dtype == DEV_TYPE_SD ) {
-		sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, cfg->verbosity, 0, "SD SW CAPS:" );
-		sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, cfg->verbosity, 0, "  bus mode 0x%x, cmd sys 0x%x",
+		sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, cfg->verbosity, 0, "SD SW CAPS:" );
+		sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, cfg->verbosity, 0, "  bus mode 0x%x, cmd sys 0x%x",
 			swcaps->bus_mode, swcaps->cmd_sys );
-		sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, cfg->verbosity, 0, "  drv type 0x%x, curr limit 0x%x",
+		sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, cfg->verbosity, 0, "  drv type 0x%x, curr limit 0x%x",
 			swcaps->drv_type, swcaps->curr_limit );
-		sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, cfg->verbosity, 0, "  dtr %d", swcaps->dtr_max_hs );
+		sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, cfg->verbosity, 0, "  dtr %d", swcaps->dtr_max_hs );
 	}
 	else {
-		static const char	*eol[5] = { "Not Defined", "Normal", "Warning Consumed 80%", "Urgent", "Reserved" };
-		static const char	*est[12] = { "Not Available", "0% - 10%", "10% - 20%", "20% - 30%", "30% - 40%", "40% - 50%",
-										"50% - 60%", "60% - 70%", "70% - 80%", "80% - 90%", "90% - 100%", "Exceeded" };
-
-		sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, cfg->verbosity, 0, "MMC EXT CSD:" );
-		sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, cfg->verbosity, 0, "  DEVICE_TYPE 0x%x, EXT_CSD_REV %d",
+		sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, cfg->verbosity, 0, "MMC EXT CSD:" );
+		sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, cfg->verbosity, 0, "  DEVICE_TYPE 0x%x, EXT_CSD_REV %d",
 			ecsd->card_type, ecsd->ext_csd_rev );
-		sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, cfg->verbosity, 0, "  SEC_COUNT %d, dtr %d", ecsd->sectors, ecsd->dtr_max_hs );
-		sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, cfg->verbosity, 0, "  HC_ERASE_GRP_SIZE %d, HC_WP_GRP_SIZE %d",
+		sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, cfg->verbosity, 0, "  SEC_COUNT %d, dtr %d", ecsd->sectors, ecsd->dtr_max_hs );
+		sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, cfg->verbosity, 0, "  HC_ERASE_GRP_SIZE %d, HC_WP_GRP_SIZE %d",
 			ecsd->hc_erase_group_size, ecsd->hc_wp_grp_size );
-		sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, cfg->verbosity, 0, "  WR_REL_SET 0x%x, WR_REL_PARAM 0x%x, REL_WR_SEC_C %d",
-			dev->raw_ecsd[ECSD_WR_REL_SET], dev->raw_ecsd[ECSD_WR_REL_PARAM], dev->rel_wr_sec_c );
 		sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, cfg->verbosity, 0, "  STROBE 0x%x, BKOPS_EN 0x%x", ecsd->strobe, ecsd->bkops_en );
 		sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, cfg->verbosity, 0, "  Driver type: 0x%x", hc->drv_type );
-
-		if( dev->raw_ecsd[ECSD_PRE_EOL_INFO] && dev->raw_ecsd[ECSD_DEVICE_LIFE_TIME_EST_TYP_A] && dev->raw_ecsd[ECSD_DEVICE_LIFE_TIME_EST_TYP_B] ) {
-			sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, cfg->verbosity, 0, "  Health:  Pre EOL Info %s, Device Life Time Est A %s, Device Life Time Est B %s",
-				eol[ min( dev->raw_ecsd[ECSD_PRE_EOL_INFO], 4 ) ], est[ min( dev->raw_ecsd[ECSD_DEVICE_LIFE_TIME_EST_TYP_A], 11 ) ],
-				est[ min( dev->raw_ecsd[ECSD_DEVICE_LIFE_TIME_EST_TYP_B], 11 ) ] );
-		}
 	}
 
-	sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, cfg->verbosity, 0, "CFG:  Timing %s, DTR %d, Bus Width %d bit", name[hc->timing], hc->clk, hc->bus_width );
-
-	sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, cfg->verbosity, 0, "Capabilites: %s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s",
-		( dev->caps & DEV_CAP_HC ) ? "HC " : "",
-		( dev->caps & DEV_CAP_HS ) ? "HS " : "",
-		( dev->caps & DEV_CAP_HS200 ) ? "HS200 " : "",
-		( dev->caps & DEV_CAP_HS400) ? "HS400 " : "",
-		( dev->caps & DEV_CAP_HS400ES ) ? "HS400ES " : "",
-		( dev->caps & DEV_CAP_DDR50 ) ? "DDR50 " : "",
-		( dev->caps & DEV_CAP_UHS ) ? "UHS " : "",
-		( dev->caps & DEV_CAP_TRIM ) ? "TRIM " : "",
-		( dev->caps & DEV_CAP_DISCARD ) ? "DISCARD " : "",
-		( dev->caps & DEV_CAP_SECURE ) ? "SECURE " : "",
-		( dev->caps & DEV_CAP_SANITIZE ) ? "SANITIZE " : "",
-		( dev->caps & DEV_CAP_BKOPS ) ? "BKOPS " : "",
-		( dev->caps & DEV_CAP_BKOPS_AUTO ) ? "BKOPS_AUTO " : "",
-		( dev->caps & DEV_CAP_CMD23 ) ? "CMD23 " : "",
-		( dev->caps & DEV_CAP_SLEEP ) ? "SLEEP " : "",
-		( dev->caps & DEV_CAP_ASSD ) ? "ASSD " : "",
-		( dev->caps & DEV_CAP_HPI_CMD12 ) ? "HPI CMD12 " : "",
-		( dev->caps & DEV_CAP_HPI_CMD13 ) ? "HPI CMD13 " : "",
-		( dev->caps & DEV_CAP_WR_REL ) ? "WR_REL " : "",
-		( dev->caps & DEV_CAP_WR_REL_ENH ) ? "WR_REL_ENH " : "",
-		( dev->caps & DEV_CAP_PWROFF_NOTIFY ) ? "PWR_NOTIFY " : "",
-		( dev->caps & DEV_CAP_UC ) ? "UC " : "" );
+	sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, cfg->verbosity, 0, "CFG:  Timing %s, DTR %d, Bus Width %d bit\n", name[hc->timing], hc->clk, hc->bus_width );
 
 	return( EOK );
 }
 
 __attribute__((used))
-static int sdio_event( sdio_hc_t * const hc, const int ev )
+static int sdio_event( sdio_hc_t *hc, int ev )
 {
 	sdio_funcs_t			*funcs;
 	struct sdio_device		*device;
-	int						status;
 
-	status	= EOK;
 	funcs	= &sdio_ctrl.connect_parm.funcs;
 
 	pthread_mutex_lock( &sdio_ctrl.mutex );
 
 		// look up device based on path, generation
 	for( device = TAILQ_FIRST( &sdio_ctrl.dlist ); device != NULL; device = TAILQ_NEXT( device, dlink ) ) {
-		if( ( device->instance.path == hc->path ) && ( device->instance.generation == hc->generation ) ) {
+		if( device->instance.path == hc->path && device->instance.generation == hc->generation ) {
 			break;
 		}
 	}
 
 	pthread_mutex_unlock( &sdio_ctrl.mutex );
 
-	if( device && ( funcs->event != NULL ) ) {
-		status = funcs->event( (void *)&sdio_ctrl, &device->instance, ev );
+	if( device && funcs->event != NULL ) {
+		funcs->event( (void *)&sdio_ctrl, &device->instance, ev );
 	}
 
-	return( status );
+	return( EOK );
 }
 
 static int sdio_cd( sdio_hc_t *hc )
@@ -1664,13 +1508,13 @@ static int sdio_cd( sdio_hc_t *hc )
 	if( ( dev->flags & DEV_FLAG_MEDIA_CHANGE ) || !( cd & CD_INS ) ) {
 		atomic_clr( &dev->flags, ( DEV_FLAG_MEDIA_CHANGE | DEV_FLAG_INVALID_CARD | DEV_FLAG_WRITE_PROTECT ) );
 		if( ( dev->flags & DEV_FLAG_PRESENT ) ) {
-			sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, hc->cfg.verbosity, 0, "%s:  removal path %d, cd state 0x%x", __FUNCTION__, hc->path, cd );
+			sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 0, "%s:  removal path %d, cd state 0x%x", __FUNCTION__, hc->path, cd );
 			atomic_clr( &dev->flags, DEV_FLAG_PRESENT );
 			pthread_mutex_lock( &sdio_ctrl.mutex );
 
 				// look up device based on path, generation
 			for( device = TAILQ_FIRST( &sdio_ctrl.dlist ); device != NULL; device = TAILQ_NEXT( device, dlink ) ) {
-				if( ( device->instance.path == hc->path ) && ( device->instance.generation == hc->generation ) ) {
+				if( device->instance.path == hc->path && device->instance.generation == hc->generation ) {
 					break;
 				}
 			}
@@ -1687,7 +1531,7 @@ static int sdio_cd( sdio_hc_t *hc )
 
 			pthread_mutex_unlock( &sdio_ctrl.mutex );
 
-			if( device && ( funcs->removal != NULL ) ) {
+			if( device && funcs->removal != NULL ) {
 				funcs->removal( (void *)&sdio_ctrl, &device->instance );
 			}
 
@@ -1699,10 +1543,10 @@ static int sdio_cd( sdio_hc_t *hc )
 
 	if( ( cd & CD_INS ) ) {
 		if( !( dev->flags & ( DEV_FLAG_PRESENT | DEV_FLAG_INVALID_CARD ) ) ) {
-			sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, hc->cfg.verbosity, 0, "%s:  insertion path %d, cd state 0x%x", __FUNCTION__, hc->path, cd );
+			sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 0, "%s:  insertion path %d, cd state 0x%x", __FUNCTION__, hc->path, cd );
 			if( _sdio_attach( hc ) == EOK ) {
 				sdio_cd_info( hc );
-				if( ( cd & CD_WP ) && ( hc->caps & HC_CAP_CD_WP ) ) {
+				if( ( cd & CD_WP ) ) {
 					atomic_set( &dev->flags, DEV_FLAG_WRITE_PROTECT );
 				}
 				memset( &inst, 0, sizeof( sdio_device_instance_t ) );
@@ -1729,7 +1573,7 @@ static int sdio_cd( sdio_hc_t *hc )
 }
 
 // hc callback for card detect, re-tuning
-int sdio_hc_event( sdio_hc_t *hc, const int ev )
+int sdio_hc_event( sdio_hc_t *hc, int ev )
 {
 	switch( ev ) {
 		case HC_EV_CD:					// notify sdio_cd_thread
@@ -1752,7 +1596,7 @@ int sdio_hc_event( sdio_hc_t *hc, const int ev )
 	return( EOK );
 }
 
-int sdio_timer_settime( const int tid, const uint32_t sec, const uint32_t nsec, const int repeat )
+int sdio_timer_settime( int tid, uint32_t sec, uint32_t nsec, int repeat )
 {
 	struct itimerspec	value;
 
@@ -1773,7 +1617,7 @@ int sdio_timer_settime( const int tid, const uint32_t sec, const uint32_t nsec, 
 	return( EOK );
 }
 
-static int sdio_cd_enum( sdio_ctrl_t * const sc )
+static int sdio_cd_enum( sdio_ctrl_t *sc )
 {
 	pthread_sleepon_lock( );
 	while( sc->cd_enum == SDIO_ENUM_DISABLE ) {
@@ -1783,31 +1627,24 @@ static int sdio_cd_enum( sdio_ctrl_t * const sc )
 	return( EOK );
 }
 
-static void *sdio_cd_thread( void * const hdl )
+static void *sdio_cd_thread( void *hdl )
 {
 	sdio_ctrl_t			*sc;
-	sdio_hc_t			*hc;
+	sdio_hc_t 			*hc;
 	int					rid;
-	int					init;
 	struct _pulse		pulse;
 	struct sigevent		event;
 
-	sc		= hdl;
-	init	= SDIO_FAILURE;
+	sc		= (sdio_ctrl_t *)hdl;
 
-	sc->cd_chid = ChannelCreate( _NTO_CHF_PRIVATE | _NTO_CHF_DISCONNECT | _NTO_CHF_UNBLOCK );
-	if( sc->cd_chid != -1 ) {
-		sc->cd_coid = ConnectAttach( 0, 0, sc->cd_chid, _NTO_SIDE_CHANNEL, 0 );
-		if( sc->cd_coid != -1 ) {
-			SIGEV_PULSE_INIT( &event, sc->cd_coid, sc->priority, SDIO_EV_TIMER, NULL );
-			if( timer_create( CLOCK_MONOTONIC, &event, &sc->cd_timerid ) != -1 ) {
-				init = SDIO_SUCCESS;
-			}
-		}
+	if( ( sc->cd_chid = ChannelCreate( _NTO_CHF_PRIVATE | _NTO_CHF_DISCONNECT | _NTO_CHF_UNBLOCK ) ) == -1 ||
+			( sc->cd_coid = ConnectAttach( 0, 0, sc->cd_chid, _NTO_SIDE_CHANNEL, 0 ) ) == -1 ) {
+		sdio_set_thread_state( &sc->state, SDIO_TSTATE_INIT_FAILURE );
+		return( NULL );
 	}
 
-	if( init == SDIO_FAILURE ) {
-			// NOTE:  calling func will cleanup/destry cd thread
+	SIGEV_PULSE_INIT( &event, sc->cd_coid, sc->priority, SDIO_EV_TIMER, NULL );
+	if( timer_create( CLOCK_MONOTONIC, &event, &sc->cd_timerid ) == -1 ) {
 		sdio_set_thread_state( &sc->state, SDIO_TSTATE_INIT_FAILURE );
 		return( NULL );
 	}
@@ -1815,15 +1652,14 @@ static void *sdio_cd_thread( void * const hdl )
 	sdio_set_thread_state( &sc->state, SDIO_TSTATE_INITIALIZED );
 
 	while( 1 ) {
-		rid = MsgReceivePulse( sc->cd_chid, &pulse, sizeof( pulse ), NULL );
-		if( rid == -1 ) {
+		if( ( rid = MsgReceivePulse( sc->cd_chid, &pulse, sizeof( pulse ), NULL ) ) == -1 ) {
 			break;
 		}
 
 		switch( pulse.code ) {
 			case SDIO_EV_TIMER:
 				for( hc = TAILQ_FIRST( &sdio_ctrl.hlist ); hc; hc = TAILQ_NEXT( hc, hlink ) ) {
-					if( ( hc->pm_state != PM_SUSPEND ) && !( hc->caps & HC_CAP_CD_INTR ) && !( hc->caps & HC_CAP_SLOT_TYPE_EMBEDDED ) ) {
+					if( !( hc->caps & HC_CAP_CD_INTR ) && !( hc->caps & HC_CAP_SLOT_TYPE_EMBEDDED ) ) {
 						sdio_cd_enum( sc );
 						sdio_cd( hc );
 					}
@@ -1845,63 +1681,49 @@ static void *sdio_cd_thread( void * const hdl )
 	return( NULL );
 }
 
-static void *sdio_hc_thread( void * const hdl )
+static void *sdio_hc_thread( void *hdl )
 {
-	sdio_hc_t			*hc;
+	sdio_hc_t 			*hc;
 	sdio_hc_entry_t		*hce;
 	int					rid;
-	int					init;
 	struct _pulse		pulse;
 	struct sigevent		event;
 	struct itimerspec	value;
 	pthread_condattr_t	attr;
 
-	hc		= hdl;
-	hce		= &hc->entry;
-	init	= SDIO_FAILURE;
+	hc		= (sdio_hc_t *)hdl;
+	hce		= (sdio_hc_entry_t *)&hc->entry;
 
-	if( pthread_condattr_init( &attr ) == EOK ) {
-		if( pthread_condattr_setclock( &attr, CLOCK_MONOTONIC ) == EOK ) {
-			if( pthread_cond_init( &hc->cond, &attr ) == EOK ) {
-				if( pthread_mutex_init( &hc->mutex, NULL ) == EOK ) {
-					if( pthread_mutex_init( &hc->cd_mutex, NULL ) == EOK ) {
-						hc->hc_chid = ChannelCreate( _NTO_CHF_PRIVATE | _NTO_CHF_DISCONNECT | _NTO_CHF_UNBLOCK );
-						if( hc->hc_chid != -1 ) {
-							hc->hc_coid = ConnectAttach( 0, 0, hc->hc_chid, _NTO_SIDE_CHANNEL, 0 );
-							if( hc->hc_coid != -1 ) {
-								if( hc->tuning_count ) {
-									memset( &value, 0, sizeof( value ) );
-									value.it_value.tv_sec = hc->tuning_count;
-
-									SIGEV_PULSE_INIT( &event, hc->hc_coid, hc->priority, HC_EV_TUNE, NULL );
-									if( timer_create( CLOCK_MONOTONIC, &event, &hc->tuning_timerid ) != -1 ) {
-										if( timer_settime( hc->tuning_timerid, 0, &value, NULL ) != -1 ) {
-											init = SDIO_SUCCESS;
-										}
-									}
-								}
-								else {
-									init = SDIO_SUCCESS;
-								}
-							}
-						}
-					}
-				}
-			}
-		}
+	if( pthread_condattr_init( &attr ) ||
+			pthread_condattr_setclock( &attr, CLOCK_MONOTONIC ) ||
+			pthread_cond_init( &hc->cond, &attr ) ||
+			pthread_mutex_init( &hc->mutex, NULL ) ||
+			pthread_mutex_init( &hc->cd_mutex, NULL ) ||
+			( hc->hc_chid = ChannelCreate( _NTO_CHF_PRIVATE | _NTO_CHF_DISCONNECT | _NTO_CHF_UNBLOCK ) ) == -1 ||
+			( hc->hc_coid = ConnectAttach( 0, 0, hc->hc_chid, _NTO_SIDE_CHANNEL, 0 ) ) == -1 ) {
+		sdio_set_thread_state( &hc->state, SDIO_TSTATE_INIT_FAILURE );
 		pthread_condattr_destroy( &attr );
+		return( NULL );
 	}
 
-	if( init == SDIO_FAILURE ) {
-		sdio_set_thread_state( &hc->state, SDIO_TSTATE_INIT_FAILURE );
-		return( NULL );
+	pthread_condattr_destroy( &attr );
+
+	if( hc->tuning_count ) {
+		memset( &value, 0, sizeof( value ) );
+		value.it_value.tv_sec = hc->tuning_count;
+
+		SIGEV_PULSE_INIT( &event, hc->hc_coid, hc->priority, HC_EV_TUNE, NULL );
+		if( timer_create( CLOCK_MONOTONIC, &event, &hc->tuning_timerid ) == -1 ||
+				timer_settime( hc->tuning_timerid, 0, &value, NULL ) == -1 ) {
+			sdio_set_thread_state( &hc->state, SDIO_TSTATE_INIT_FAILURE );
+			return( NULL );
+		}
 	}
 
 	sdio_set_thread_state( &hc->state, SDIO_TSTATE_INITIALIZED );
 
 	while( 1 ) {
-		rid = MsgReceivePulse( hc->hc_chid, &pulse, sizeof( pulse ), NULL );
-		if( rid == -1 ) {
+		if( ( rid = MsgReceivePulse( hc->hc_chid, &pulse, sizeof( pulse ), NULL ) ) == -1 ) {
 			break;
 		}
 
@@ -1937,94 +1759,198 @@ int sdio_options( sdio_hc_t *hc, char *options )
 	sdio_hc_cfg_t		*cfg;
 	char				*ltok;
 	char				*delims = { ":" };
-	enum {
-		OPTION_WITHOUT_ARGS = 0,
-			OPTION_DISABLE_BUS_MSTR = OPTION_WITHOUT_ARGS,
-			OPTION_DISABLE_AC_12,
-			OPTION_DISABLE_AC_23,
-			OPTION_EMMC,
-			OPTION_CD_NOWP,
-
-		OPTION_WITH_ARGS,
-			OPTION_PRIORITY = OPTION_WITH_ARGS,
-			OPTION_HC,
-			OPTION_VID,
-			OPTION_DID,
-			OPTION_IDX,
-			OPTION_BASE_ADDR,
-			OPTION_IRQ,
-			OPTION_DMA,
-			OPTION_OPERATION_CLK,
-			OPTION_BUS_WIDTH,
-			OPTION_BUS_SMART,
-			OPTION_PWR_MGMT,
-			OPTION_BOARD_SPECIFIC,
-			OPTION_HOST_SPECIFIC,
-			OPTION_DRV_TYPE,
-
-		OPTION_VAR_ARGS,
-			OPTION_VERBOSE = OPTION_VAR_ARGS,
-	};
-
-	static char *opts[] = {
-		[OPTION_DISABLE_BUS_MSTR]	= "~bmstr",
-		[OPTION_DISABLE_AC_12]		= "~ac12",
-		[OPTION_DISABLE_AC_23]		= "~ac23",
-		[OPTION_EMMC]				= "emmc",
-		[OPTION_CD_NOWP]			= "nowp",
-
-		[OPTION_PRIORITY]			= "priority",
-		[OPTION_HC]					= "hc",
-		[OPTION_VID]				= "vid",
-		[OPTION_DID]				= "did",
-		[OPTION_IDX]				= "idx",
-		[OPTION_BASE_ADDR]			= "addr",
-		[OPTION_IRQ]				= "irq",
-		[OPTION_DMA]				= "dma",
-		[OPTION_OPERATION_CLK]		= "clk",
-		[OPTION_BUS_WIDTH]			= "bw",
-		[OPTION_BUS_SMART]			= "timing",
-		[OPTION_PWR_MGMT]			= "pm",
-		[OPTION_BOARD_SPECIFIC]		= "bs",
-		[OPTION_HOST_SPECIFIC]		= "hs",
-		[OPTION_DRV_TYPE]			= "drv_type",
-
-		[OPTION_VERBOSE]			= "verbose",
-
-		NULL
-	};
+    enum
+    {
+        OPTION_VERBOSITY = 0,
+        OPTION_PRIORITY,
+        OPTION_HC,
+        OPTION_VID,
+        OPTION_DID,
+        OPTION_IDX,
+        OPTION_BASE_ADDR,
+        OPTION_IRQ,
+        OPTION_DMA,
+        OPTION_OPERATION_CLK,
+        OPTION_BUS_WIDTH,
+        OPTION_BUS_SMART,
+        OPTION_DISABLE_BUS_MSTR,
+        OPTION_DISABLE_AC_12,
+        OPTION_DISABLE_AC_23,
+        OPTION_PWR_MGMT,
+        OPTION_BOARD_SPECIFIC,
+        OPTION_HOST_SPECIFIC,
+        OPTION_EMMC,
+        OPTION_DRV_TYPE,
+    };
+    static char *opts[] =
+    {
+        [OPTION_VERBOSITY] = "verbose",
+        [OPTION_PRIORITY] = "priority",
+        [OPTION_HC] = "hc",
+        [OPTION_VID] = "vid",
+        [OPTION_DID] = "did",
+        [OPTION_IDX] = "idx",
+        [OPTION_BASE_ADDR] = "addr",
+        [OPTION_IRQ] = "irq",
+        [OPTION_DMA] = "dma",
+        [OPTION_OPERATION_CLK] = "clk",
+        [OPTION_BUS_WIDTH] = "bw",
+        [OPTION_BUS_SMART] = "timing",
+        [OPTION_DISABLE_BUS_MSTR] = "~bmstr",
+        [OPTION_DISABLE_AC_12] = "~ac12",
+        [OPTION_DISABLE_AC_23] = "~ac23",
+        [OPTION_PWR_MGMT] = "pm",
+        [OPTION_BOARD_SPECIFIC] = "bs",
+        [OPTION_HOST_SPECIFIC] = "hs",
+        [OPTION_EMMC] = "emmc",
+        [OPTION_DRV_TYPE] = "drv_type",
+        NULL
+    };
 
 	cfg		= &hc->cfg;
 	status	= EOK;
 
-	while( (*options != '\0') && (status == EOK) ) {
-		opt = getsubopt( &options, opts, &value );
-		if( opt == -1 ) {
-			sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, 0, 0, "%s: Invalid sdio option '%s'", __FUNCTION__, value );
-			status = EINVAL;
-			break;
-		}
-
-		if( opt < OPTION_VAR_ARGS ) {
-			if( opt < OPTION_WITH_ARGS ) {
-				if( value != NULL ) {
-					sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, 0, 0, "%s: Unexpected argument for '%s'", __FUNCTION__, opts[ opt ] );
-					status = EINVAL;
-					break;
-				}
-			}
-			else {
-				if( (value == NULL) || (*value == '\0') ) {
-					sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, 0, 0, "%s: Missing argument for '%s'", __FUNCTION__, opts[ opt ] );
-					status = EINVAL;
-					break;
-				}
-			}
+	while( options && *options != '\0' && status == EOK ) {
+		if( ( opt = getsubopt( &options, opts, &value ) ) == -1 ) {
+			report_invalid_suboption( __FUNCTION__, value );
+			status = EINVAL; break;
 		}
 
 		switch( opt ) {
+			case OPTION_VERBOSITY:			// verbosity
+				if( value != NULL && *value != '\0' ) {
+					sdio_parse_tuple( value, ':', &argstr[0], NULL );
+					if( ( val = sdio_parse_number( argstr[0] ) ) != SDIO_INVALID_NUM ) {
+						cfg->verbosity = val;
+					}
+				}
+				else {
+					cfg->verbosity++;
+				}
+				break;
 
-// options without args follow
+			case OPTION_PRIORITY:
+				SDIO_ARG_VAL( opts[opt], value, status );
+				val = strtol( value, NULL, 0 );
+				if( val >= sched_get_priority_min( SCHED_RR ) && val <= sched_get_priority_max( SCHED_RR ) )
+					hc->priority = val;
+				else {
+					sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 0, "%s:  Invalid priority '%s'", __FUNCTION__, value );
+				}
+				break;
+
+			case OPTION_HC:			// hc - host contoller
+				SDIO_ARG_VAL( opts[opt], value, status );
+				strlcpy( cfg->name, value, sizeof( cfg->name ) );
+				break;
+
+			case OPTION_VID:			// vid - vender id
+				SDIO_ARG_VAL( opts[opt], value, status );
+				if( ( val = sdio_parse_number( value ) ) != SDIO_INVALID_NUM ) {
+					cfg->vid = val;
+				}
+				break;
+
+			case OPTION_DID:			// did - device id
+				SDIO_ARG_VAL( opts[opt], value, status );
+				if( ( val = sdio_parse_number( value ) ) != SDIO_INVALID_NUM ) {
+					cfg->did = val;
+				}
+				break;
+
+			case OPTION_IDX:			// idx
+				SDIO_ARG_VAL( opts[opt], value, status );
+				if( ( val = sdio_parse_number( value ) ) != SDIO_INVALID_NUM ) {
+					cfg->idx = val;
+				}
+				break;
+
+			case OPTION_BASE_ADDR:			// addr
+				sdio_parse_tuple( value, ':', &argstr[0], &argstr[1], NULL );
+				SDIO_ARG_VAL( opts[opt], argstr[0], status );
+				if( ( val64 = sdio_parse_number64( argstr[0] ) ) != SDIO_INVALID_NUM ) {
+					cfg->base_addr[cfg->base_addrs] = val64;
+					if( argstr[1] != NULL && *argstr[1] != '\0' ) {
+						if( ( val64 = sdio_parse_number64( argstr[1] ) ) != SDIO_INVALID_NUM ) {
+							cfg->base_addr_size[cfg->base_addrs] = val64;
+						}
+					}
+					cfg->base_addrs++;
+				}
+				break;
+
+			case OPTION_IRQ:			// irq
+				SDIO_ARG_VAL( opts[opt], value, status );
+				if( ( val = sdio_parse_number( value ) ) != SDIO_INVALID_NUM ) {
+					cfg->irq[cfg->irqs++] = val;
+				}
+				break;
+
+			case OPTION_DMA:			// dma - dma channel
+				SDIO_ARG_VAL( opts[opt], value, status );
+				if( ( val = sdio_parse_number( value ) ) != SDIO_INVALID_NUM ) {
+					cfg->dma_chnl[cfg->dma_chnls++] = val;
+				}
+				break;
+
+			case OPTION_OPERATION_CLK:			// clk
+				SDIO_ARG_VAL( opts[opt], value, status );
+				if( ( val = sdio_parse_number( value ) ) != SDIO_INVALID_NUM ) {
+					cfg->clk = val;
+				}
+				break;
+
+			case OPTION_BUS_WIDTH:		// bw - bus width
+				SDIO_ARG_VAL( opts[opt], value, status );
+				ocap	= ncap = 0;
+				value	= strtok_r( value, delims, &ltok );
+				while( value != NULL ) {
+					cap		= &ocap;
+					if( value[0] == '~' ) {
+						value++; cap = &ncap;
+					}
+					if( !strcmp( value, "4" ) )				*cap |= HC_CAP_BW4;
+					else if( !strcmp( value, "8" ) )		*cap |= HC_CAP_BW8;
+					else sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 0, "%s:  Invalid bw '%s'", __FUNCTION__, value );
+					value = strtok_r( NULL, delims, &ltok );
+				}
+				if( ocap ) {
+					cfg->caps &= ~HC_CAP_BW_MSK; cfg->caps |= ocap;
+				}
+				if( ncap ) {
+					cfg->caps &= ~ncap;
+				}
+				break;
+
+			case OPTION_BUS_SMART:		// timing
+				SDIO_ARG_VAL( opts[opt], value, status );
+				ocap	= ncap = 0;
+				value	= strtok_r( value, delims, &ltok );
+				while( value != NULL ) {
+					cap		= &ocap;
+					if( value[0] == '~' ) {
+						value++; cap = &ncap;
+					}
+					if( !strcmp( value, "hs" ) )			*cap |= HC_CAP_HS;
+					else if( !strcmp( value, "ddr" ) )		*cap |= HC_CAP_DDR50 | HC_CAP_HS;
+					else if( !strcmp( value, "sdr" ) )		*cap |= ( HC_CAP_SDR12 | HC_CAP_SDR25 | HC_CAP_SDR50 | HC_CAP_SDR104 | HC_CAP_DDR50 );
+					else if( !strcmp( value, "sdr12" ) )	*cap |= HC_CAP_SDR12;
+					else if( !strcmp( value, "sdr25" ) )	*cap |= HC_CAP_SDR25;
+					else if( !strcmp( value, "sdr50" ) )	*cap |= HC_CAP_SDR50;
+					else if( !strcmp( value, "sdr104" ) )	*cap |= HC_CAP_SDR104;
+					else if( !strcmp( value, "hs200" ) )	*cap |= HC_CAP_HS200;
+					else if( !strcmp( value, "hs400" ) )	*cap |= HC_CAP_HS400;
+					else if( !strcmp( value, "hs400es" ) )  *cap |= HC_CAP_HS400ES;
+					else sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 0, "%s:  Invalid timing '%s'", __FUNCTION__, value );
+					value = strtok_r( NULL, delims, &ltok );
+				}
+				if( ocap ) {
+					cfg->caps &= ~HC_CAP_TIMING_MSK; cfg->caps |= ocap;
+				}
+				if( ncap ) {
+					cfg->caps &= ~ncap;
+				}
+				break;
 
 			case OPTION_DISABLE_BUS_MSTR:	// ~bmstr
 				cfg->caps &= ~HC_CAP_DMA;
@@ -2038,254 +1964,55 @@ int sdio_options( sdio_hc_t *hc, char *options )
 				cfg->caps &= ~HC_CAP_ACMD23;
 				break;
 
+
+			case OPTION_PWR_MGMT:			// pm idle:sleep in ms
+				sdio_parse_tuple( value, ':', &argstr[0], &argstr[1], NULL );
+				SDIO_ARG_VAL( opts[opt], argstr[0], status );
+				if( ( val = sdio_parse_number( argstr[0] ) ) != SDIO_INVALID_NUM ) {
+					cfg->idle_time = val;
+				}
+				if( argstr[1] != NULL && *argstr[1] != '\0' ) {
+					if( ( val = sdio_parse_number( argstr[1] ) ) != SDIO_INVALID_NUM ) {
+						cfg->sleep_time = val;
+					}
+				}
+				break;
+
+			case OPTION_BOARD_SPECIFIC:		// bs options
+				SDIO_ARG_VAL( opts[opt], value, status );
+				cfg->options = strdup( value );
+				break;
+
+			case OPTION_HOST_SPECIFIC:		// hs options
+				SDIO_ARG_VAL( opts[opt], value, status );
+				cfg->hsoptions = strdup( value );
+				break;
+
 			case OPTION_EMMC:				// eMMC
 				hc->caps |= HC_CAP_SLOT_TYPE_EMBEDDED;
 				hc->flags |= HC_FLAG_DEV_MMC;
 				cfg->caps &= ~HC_CAP_CD_INTR;
 				break;
 
-			case OPTION_CD_NOWP:			// no change detect write protect
-				cfg->caps &= ~HC_CAP_CD_WP;
-				break;
-
-// options with args follow
-
-			case OPTION_PRIORITY:			// priority
-				val = sdio_parse_number( value );
-				if( (val == SDIO_INVALID_NUM) || (val < sched_get_priority_min( SCHED_RR )) || (val > sched_get_priority_max( SCHED_RR )) ) {
-					sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 0, "%s:  Invalid %s", __FUNCTION__, opts[ opt ] );
-					status = EINVAL;
-					break;
-				}
-				hc->priority = val;
-				break;
-
-			case OPTION_HC:			// hc - host contoller
-				strlcpy( cfg->name, value, sizeof( cfg->name ) );
-				break;
-
-			case OPTION_VID:			// vid - vender id
-				val = sdio_parse_number( value );
-				if( val == SDIO_INVALID_NUM ) {
-					sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 0, "%s:  Invalid %s", __FUNCTION__, opts[ opt ] );
-					status = EINVAL;
-					break;
-				}
-				cfg->vid = val;
-				break;
-
-			case OPTION_DID:			// did - device id
-				val = sdio_parse_number( value );
-				if( val == SDIO_INVALID_NUM ) {
-					sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 0, "%s:  Invalid %s", __FUNCTION__, opts[ opt ] );
-					status = EINVAL;
-					break;
-				}
-				cfg->did = val;
-				break;
-
-			case OPTION_IDX:			// idx
-				val = sdio_parse_number( value );
-				if( val == SDIO_INVALID_NUM ) {
-					sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 0, "%s:  Invalid %s", __FUNCTION__, opts[ opt ] );
-					status = EINVAL;
-					break;
-				}
-				cfg->idx = val;
-				break;
-
-			case OPTION_BASE_ADDR:		// addr
-				sdio_parse_tuple( value, ':', &argstr[0], &argstr[1], NULL );
-				val64 = sdio_parse_number64( argstr[0] );
-				if( val64 != SDIO_INVALID_NUM ) {
-					cfg->base_addr[cfg->base_addrs] = val64;
-					if( (argstr[1] != NULL) && (*argstr[1] != '\0') ) {
-						val64 = sdio_parse_number64( argstr[1] );
-						if( val64 != SDIO_INVALID_NUM ) {
-							cfg->base_addr_size[cfg->base_addrs] = val64;
-						}
-					}
-					cfg->base_addrs++;
-				}
-				break;
-
-			case OPTION_IRQ:			// irq
-				val = sdio_parse_number( value );
-				if( val == SDIO_INVALID_NUM ) {
-					sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 0, "%s:  Invalid %s", __FUNCTION__, opts[ opt ] );
-					status = EINVAL;
-					break;
-				}
-				cfg->irq[cfg->irqs++] = val;
-				break;
-
-			case OPTION_DMA:			// dma - dma channel
-				val = sdio_parse_number( value );
-				if( val == SDIO_INVALID_NUM ) {
-					sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 0, "%s:  Invalid %s", __FUNCTION__, opts[ opt ] );
-					status = EINVAL;
-					break;
-				}
-				cfg->dma_chnl[cfg->dma_chnls++] = val;
-				break;
-
-			case OPTION_OPERATION_CLK:	// clk
-				val = sdio_parse_number( value );
-				if( val == SDIO_INVALID_NUM ) {
-					sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 0, "%s:  Invalid %s", __FUNCTION__, opts[ opt ] );
-					status = EINVAL;
-					break;
-				}
-				cfg->clk = val;
-				break;
-
-			case OPTION_BUS_WIDTH:		// bw - bus width
-				ocap	= 0;
-				ncap	= 0;
-				value	= strtok_r( value, delims, &ltok );
-				while( value != NULL ) {
-					cap		= &ocap;
-					if( value[0] == '~' ) {
-						value++;
-						cap = &ncap;
-					}
-					if( !strcmp( value, "4" ) ) {
-						*cap |= HC_CAP_BW4;
-					}
-					else if( !strcmp( value, "8" ) ) {
-						*cap |= HC_CAP_BW8;
-					}
-					else {
-						sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 0, "%s:  Invalid bw '%s'", __FUNCTION__, value );
-						status = EINVAL;
-						break;
-					}
-					value = strtok_r( NULL, delims, &ltok );
-				}
-				if( ocap ) {
-					cfg->caps &= ~HC_CAP_BW_MSK;
-					cfg->caps |= ocap;
-				}
-				if( ncap ) {
-					cfg->caps &= ~ncap;
-				}
-				break;
-
-			case OPTION_BUS_SMART:		// timing
-				ocap	= 0;
-				ncap	= 0;
-				value	= strtok_r( value, delims, &ltok );
-				while( value != NULL ) {
-					cap		= &ocap;
-					if( value[0] == '~' ) {
-						value++;
-						cap = &ncap;
-					}
-					if( !strcmp( value, "hs" ) ) {
-						*cap |= HC_CAP_HS;
-					}
-					else if( !strcmp( value, "ddr" ) ) {
-						*cap |= HC_CAP_DDR50 | HC_CAP_HS;
-					}
-					else if( !strcmp( value, "sdr" ) ) {
-						*cap |= ( HC_CAP_SDR12 | HC_CAP_SDR25 | HC_CAP_SDR50 | HC_CAP_SDR104 | HC_CAP_DDR50 );
-					}
-					else if( !strcmp( value, "sdr12" ) ) {
-						*cap |= HC_CAP_SDR12;
-					}
-					else if( !strcmp( value, "sdr25" ) ) {
-						*cap |= HC_CAP_SDR25;
-					}
-					else if( !strcmp( value, "sdr50" ) ) {
-						*cap |= HC_CAP_SDR50;
-					}
-					else if( !strcmp( value, "sdr104" ) ) {
-						*cap |= HC_CAP_SDR104;
-					}
-					else if( !strcmp( value, "hs200" ) ) {
-						*cap |= HC_CAP_HS200;
-					}
-					else if( !strcmp( value, "hs400" ) ) {
-						*cap |= HC_CAP_HS400;
-					}
-					else if( !strcmp( value, "hs400es" ) ) {
-						*cap |= HC_CAP_HS400ES;
-					}
-					else {
-						sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 0, "%s:  Invalid timing '%s'", __FUNCTION__, value );
-						status = EINVAL;
-						break;
-					}
-					value = strtok_r( NULL, delims, &ltok );
-				}
-				if( ocap ) {
-					cfg->caps &= ~HC_CAP_TIMING_MSK;
-					cfg->caps |= ocap;
-				}
-				if( ncap ) {
-					cfg->caps &= ~ncap;
-				}
-				break;
-
-			case OPTION_PWR_MGMT:			// pm idle:sleep in ms
-				sdio_parse_tuple( value, ':', &argstr[0], &argstr[1], NULL );
-				val = sdio_parse_number( argstr[0] );
-				if( val != SDIO_INVALID_NUM ) {
-					cfg->idle_time = val;
-				}
-				val = sdio_parse_number( argstr[1] );
-				if( val != SDIO_INVALID_NUM ) {
-					cfg->sleep_time = val;
-				}
-				break;
-
-			case OPTION_BOARD_SPECIFIC:		// bs options
-				if( cfg->options ) {
-					free( cfg->options );
-				}
-				cfg->options = strdup( value );
-				break;
-
-			case OPTION_HOST_SPECIFIC:		// hs options
-				if( cfg->hsoptions ) {
-					free( cfg->hsoptions );
-				}
-				cfg->hsoptions = strdup( value );
-				break;
-
 			case OPTION_DRV_TYPE:			// drv_type
-				val = sdio_parse_number( value );
-				if( ( val == SDIO_INVALID_NUM ) || ( val > 4 ) ) {
-					sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 0, "%s:  Invalid %s", __FUNCTION__, opts[ opt ] );
-					status = EINVAL;
-					break;
-				}
-				hc->drv_type = val;
-				break;
-
-// options with variable args follow
-
-			case OPTION_VERBOSE:			// verbose
-				if( value != NULL ) {
-					val = sdio_parse_number( value );
-					if( val == SDIO_INVALID_NUM ) {
-						sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 0, "%s:  Invalid %s", __FUNCTION__, opts[ opt ] );
-						status = EINVAL;
-						break;
+				SDIO_ARG_VAL( opts[opt], value, status );
+				if( ( val = sdio_parse_number( value ) ) != SDIO_INVALID_NUM ) {
+					if( val >= 0 && val <= 4 ) {
+						hc->drv_type = val;
 					}
-					cfg->verbosity = val;
-				}
-				else {
-					cfg->verbosity++;
+					else {
+						sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 0, "%s:  Invalid drv_type '%d'", __FUNCTION__, val );
+					}
 				}
 				break;
 
 			default:
 				break;
+
 		}
 	}
 
-	if( (cfg->vid == 0) && (cfg->name[0] == '\0') && (cfg->idx == -1) ) {
+	if( !cfg->vid && cfg->name[0] == '\0' && cfg->idx == -1 ) {
 		sdio_ctrl.flags		|= SDIO_CFLAG_SCAN;
 		sdio_ctrl.verbosity	= cfg->verbosity;
 		if( hc->priority != SDIO_PRIORITY ) {
@@ -2296,7 +2023,7 @@ int sdio_options( sdio_hc_t *hc, char *options )
 	return( status );
 }
 
-static int sdio_xpt_device_notify( sdio_hc_t *hc, const int op )
+static int sdio_xpt_device_notify( sdio_hc_t *hc, int op )
 {
 	sdio_hc_cfg_t	*cfg;
 	XPT_DEVICE		dev;
@@ -2346,7 +2073,7 @@ static int sdio_hc_dinit( sdio_hc_t *hc )
 
 	cfg				= &hc->cfg;
 
-//	sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, hc->cfg.verbosity, 1, "%s: hc %p", __FUNCTION__, hc );
+//	sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 1, "%s: hc %p", __FUNCTION__, hc );
 
 	if( hc->entry.dinit ) {
 		hc->entry.dinit( hc );
@@ -2355,11 +2082,6 @@ static int sdio_hc_dinit( sdio_hc_t *hc )
 	if( cfg->options ) {
 		free( cfg->options );
 		cfg->options = NULL;
-	}
-
-	if( cfg->hsoptions ) {
-		free( cfg->hsoptions );
-		cfg->hsoptions = NULL;
 	}
 
 	if( hc->hc_coid != -1 ) {
@@ -2375,6 +2097,7 @@ static int sdio_hc_dinit( sdio_hc_t *hc )
 	}
 
 	if( hc->hc_tid != -1 ) {
+//		pthread_cancel( hc->hc_tid );
 		pthread_join( hc->hc_tid, NULL );
 	}
 
@@ -2391,7 +2114,7 @@ static int sdio_hc_dinit( sdio_hc_t *hc )
 	return( EOK );
 }
 
-sdio_product_t *sdio_hc_lookup( const uint16_t vid, const uint16_t did, uint32_t class, char * const name )
+sdio_product_t *sdio_hc_lookup( int vid, int did, int class, char *name )
 {
 	sdio_vendor_t	*vend;
 	sdio_product_t	*prod;
@@ -2400,10 +2123,10 @@ sdio_product_t *sdio_hc_lookup( const uint16_t vid, const uint16_t did, uint32_t
 	if( vid && did ) {
 		class &= ~0xff;
 		for( vend = sdio_vendors; vend->vid; vend++ ) {
-			if( ( vend->vid == vid ) || ( vend->vid == SDIO_VENDOR_ID_WILDCARD ) ) {
+			if( vend->vid == vid || vend->vid == SDIO_VENDOR_ID_WILDCARD ) {
 				for( prod = vend->chipsets; prod->did; prod++ ) {
-					if( ( ( prod->did == SDIO_DEVICE_ID_WILDCARD ) &&
-							( prod->class == class ) ) || ( prod->did == did ) ) {
+					if( ( prod->did == SDIO_DEVICE_ID_WILDCARD &&
+							prod->class == class ) || prod->did == did ) {
 						return( prod );
 					}
 				}
@@ -2437,12 +2160,9 @@ static int sdio_hc_init( sdio_hc_t *hc )
 
 	sdio_xpt_device_notify( hc, SDIO_TRUE );
 
-	prod = sdio_hc_lookup( cfg->vid, cfg->did, cfg->class, cfg->name );
-	if( prod != NULL ) {
-		status = sdio_create_thread( &hc->hc_tid, NULL, sdio_hc_thread, hc, hc->priority, &hc->state, "sdio_hc_thread" );
-		if( status == EOK ) {
-			status = prod->init( hc );
-			if( status == EOK ) {
+	if( ( prod = sdio_hc_lookup( cfg->vid, cfg->did, cfg->class, cfg->name ) ) ) {
+		if( ( status = sdio_create_thread( &hc->hc_tid, NULL, sdio_hc_thread, hc, hc->priority, &hc->state, "sdio_hc_thread" ) ) == EOK ) {
+			if( ( status = prod->init( hc ) ) == EOK ) {
 				if( cfg->name[0] == '\0' ) {
 					strlcpy( cfg->name, prod->name, sizeof( cfg->name ) );
 				}
@@ -2472,7 +2192,7 @@ static int sdio_hc_init( sdio_hc_t *hc )
 
 static int sdio_cd_dinit( sdio_ctrl_t *sc )
 {
-//	sdio_slogf( _SLOGC_SDIODI, _SLOG_INFO, hc->cfg.verbosity, 1, "%s: sc %p", __FUNCTION__, sc );
+//	sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, hc->cfg.verbosity, 1, "%s: sc %p", __FUNCTION__, sc );
 
 	if( sc->cd_timerid != -1 ) {
 		timer_delete( sc->cd_timerid );
@@ -2487,13 +2207,11 @@ static int sdio_cd_dinit( sdio_ctrl_t *sc )
 	}
 
 	if( sc->cd_tid != -1 ) {
+//		pthread_cancel( sc->cd_tid );
 		pthread_join( sc->cd_tid, NULL );
 	}
 
-	sc->cd_coid		= -1;
-	sc->cd_chid		= -1;
-	sc->cd_tid		= -1;
-	sc->cd_timerid	= -1;
+	sc->cd_coid = sc->cd_chid = sc->cd_tid = sc->cd_timerid = -1;
 
 	return( EOK );
 }
@@ -2532,19 +2250,12 @@ static int sdio_init( sdio_ctrl_t *sc )
 	TAILQ_INIT( &sc->hlist );
 	TAILQ_INIT( &sc->dlist );
 	TAILQ_INIT( &sc->clist );
-	sc->cd_coid		= -1;
-	sc->cd_chid		= -1;
-	sc->cd_tid		= -1;
-	sc->cd_timerid	= -1;
-
+	sc->cd_coid		= sc->cd_chid = sc->cd_tid = sc->cd_timerid = -1;
 	sc->priority	= SDIO_PRIORITY;
 
-	status = pthread_mutex_init( &sc->mutex, NULL );
-	if( status == EOK ) {
-		status = pthread_cond_init( &sc->cd_cond, NULL );
-		if( status == EOK ) {
-			status = sdio_create_thread( &sc->cd_tid, NULL, sdio_cd_thread, sc, sc->priority, &sc->state, "sdio_cd_thread" );
-			if( status == EOK ) {
+	if( ( status = pthread_mutex_init( &sc->mutex, NULL ) ) == EOK ) {
+		if( ( status = pthread_cond_init( &sc->cd_cond, NULL ) ) == EOK ) {
+			if( ( status = sdio_create_thread( &sc->cd_tid, NULL, sdio_cd_thread, sc, sc->priority, &sc->state, "sdio_cd_thread" ) ) == EOK ) {
 				return( EOK );
 			}
 		}
@@ -2555,7 +2266,7 @@ static int sdio_init( sdio_ctrl_t *sc )
 	return( status ? status : errno );
 }
 
-int _sdio_disconnect( void )
+int _sdio_disconnect( )
 {
 	struct sdio_device	*device;
 
@@ -2579,7 +2290,7 @@ int _sdio_disconnect( void )
 	return( EOK );
 }
 
-int _sdio_connect( sdio_connect_parm_t * const parm, struct sdio_connection ** const connection )
+int _sdio_connect( sdio_connect_parm_t *parm, struct sdio_connection **connection )
 {
 	sdio_hc_t		*hc;
 	char			*margs;
@@ -2587,8 +2298,7 @@ int _sdio_connect( sdio_connect_parm_t * const parm, struct sdio_connection ** c
 	int				status;
 	int				occurence;
 
-	status = sdio_init( &sdio_ctrl );
-	if( status != EOK ) {
+	if( ( status = sdio_init( &sdio_ctrl ) ) != EOK ) {
 		sdio_slogf( _SLOGC_SDIODI, _SLOG_ERROR, 0, 0, "%s: sdio_init failure", __FUNCTION__ );
 		return( status );
 	}
@@ -2602,8 +2312,7 @@ int _sdio_connect( sdio_connect_parm_t * const parm, struct sdio_connection ** c
 	while( ( margs = sdio_module_args( "sdio", parm->argc, parm->argv, occurence++ ) ) ) {
 			// ignore args if we are scanning
 		if( !( sdio_ctrl.flags & SDIO_CFLAG_SCAN ) ) {
-			hc = sdio_hc_alloc( );
-			if( hc != NULL ) {
+			if( ( hc = sdio_hc_alloc( ) ) ) {
 				status = sdio_options( hc, margs );
 			}
 			else {
@@ -2618,7 +2327,7 @@ int _sdio_connect( sdio_connect_parm_t * const parm, struct sdio_connection ** c
 	}
 
 		// no args or scan required
-	if( ( TAILQ_FIRST( &sdio_ctrl.hlist ) == NULL ) || ( sdio_ctrl.flags & SDIO_CFLAG_SCAN ) ) {
+	if( TAILQ_FIRST( &sdio_ctrl.hlist ) == NULL || ( sdio_ctrl.flags & SDIO_CFLAG_SCAN ) ) {
 #ifdef SDIO_PCI_SUPPORT
 		sdio_pci_scan( );
 #endif
@@ -2629,15 +2338,13 @@ int _sdio_connect( sdio_connect_parm_t * const parm, struct sdio_connection ** c
 	else {
 		for( hc = TAILQ_FIRST( &sdio_ctrl.hlist ); hc; hc = TAILQ_NEXT( hc, hlink ) ) {
 #ifdef SDIO_PCI_SUPPORT
-			status = sdio_pci_device( hc );
-			if( status == EOK ) {
+			if( ( status = sdio_pci_device( hc ) ) == EOK ) {
 				continue;
 			}
 #endif
 
 #ifdef SDIO_SOC_SUPPORT
-			status = sdio_soc_device( hc );
-			if( status == EOK ) {
+			if( ( status = sdio_soc_device( hc ) ) == EOK ) {
 				continue;
 			}
 #endif
@@ -2647,8 +2354,7 @@ int _sdio_connect( sdio_connect_parm_t * const parm, struct sdio_connection ** c
 	}
 
 	for( hc = TAILQ_FIRST( &sdio_ctrl.hlist ), tmr = 0; hc; hc = TAILQ_NEXT( hc, hlink ) ) {
-		status = sdio_hc_init( hc );
-		if( status != EOK ) {
+		if( ( status = sdio_hc_init( hc ) ) != EOK ) {
 			sdio_dinit( &sdio_ctrl );
 			return( status );
 		}
@@ -2675,3 +2381,8 @@ int _sdio_connect( sdio_connect_parm_t * const parm, struct sdio_connection ** c
 
 	return( TAILQ_FIRST( &sdio_ctrl.hlist ) ? EOK : ENODEV );
 }
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/devb/sdmmc/sdiodi/base.c $ $Rev: 936068 $")
+#endif

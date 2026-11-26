@@ -1,27 +1,6 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC:
- * Copyright 2010-2019, QNX Software Systems.
+ * Copyright 2010, QNX Software Systems.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"). You
  * may not reproduce, modify or distribute this software except in
@@ -41,11 +20,17 @@
  */
 
 #include <sys/platform.h>
-#include <startup.h>
 
-extern const char * const __progname;
+void __stack_chk_fail(void);
+void __stack_chk_fail_local(void);
+void __chk_fail(void);
 
-void __ssp_fail(const char * const msg)
-{
-    crash("\n*** %s ***: %s terminated\n", msg, __progname);
-}
+
+void __stack_chk_fail(void) {}
+void __stack_chk_fail_local(void) {}
+void __chk_fail(void) {}
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/startup/lib/ssp.c $ $Rev: 933874 $")
+#endif

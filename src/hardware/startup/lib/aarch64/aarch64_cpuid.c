@@ -1,26 +1,6 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
- * Copyright 2014,2022,2025 BlackBerry Limited.
+ * $QNXLicenseC:
+ * Copyright 2014, QNX Software Systems.
  * Copyright 2016, Freescale Semiconductor, Inc.
  * Copyright 2017, NXP.
  * Copyright 2018, NVIDIA CORPORATION.
@@ -42,7 +22,7 @@
  * $
  */
 
-#include <startup.h>
+#include "startup.h"
 
 struct aarch64_cpuid	*aarch64_cpuid[] = {
 	&cpuid_a35,
@@ -50,22 +30,19 @@ struct aarch64_cpuid	*aarch64_cpuid[] = {
 	&cpuid_a55,
 	&cpuid_a57,
 	&cpuid_a72,
-	&cpuid_a720,
-	&cpuid_a720ae,
 	&cpuid_a75,
 	&cpuid_a76,
-	&cpuid_a78ae,
 
 	&cpuid_v8_fm,
 	&cpuid_v8_aem,
-	&cpuid_n1,
-	&cpuid_neo_v1,
-	&cpuid_neo_v2,
-	&cpuid_x2,
-	&cpuid_x4,
-	&cpuid_x925,
+
 	&cpuid_d15,
 	&cpuid_d20,
 
 	0
 };
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/startup/lib/aarch64/aarch64_cpuid.c $ $Rev: 936848 $")
+#endif

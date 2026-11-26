@@ -1,24 +1,3 @@
-/*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
 #
 # Copyright 2016, QNX Software Systems.
 #
@@ -41,7 +20,7 @@
  * requests PSCI:SYSTEM_RESET (0x84000009) to reset the system
  */
 
-#include <aarch64/callout.ah>
+#include "callout.ah"
 
 CALLOUT_START(reboot_psci_hvc, 0, 0)
 	tbz		w1, #0,do_reboot_hvc	// w1 == abnormal reboot flag
@@ -61,8 +40,6 @@ spin_hvc:
 CALLOUT_END(reboot_psci_hvc)
 
 CALLOUT_START(reboot_psci_smc, 0, 0)
-	msr		daifset, #0xf		// disable system interrupts
-
 	tbz		w1, #0, do_reboot_smc	// w1 == abnormal reboot flag
 	ldurh	w2, [x0, #SYSPAGE_SYSTEM_PRIVATE] // offset to system_private
 	add		x0, x0, x2			  // system_private address
@@ -78,3 +55,11 @@ do_reboot_smc:
 spin_smc:
 	b		spin_smc
 CALLOUT_END(reboot_psci_smc)
+
+#ifdef __QNXNTO__
+#ifdef __USESRCVERSION
+.section .ident, "SM",%progbits,1;
+.asciz "$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/startup/lib/aarch64/callout_reboot_psci.S $ $Rev: 810941 $";
+.previous
+#endif
+#endif

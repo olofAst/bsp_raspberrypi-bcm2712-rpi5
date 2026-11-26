@@ -1,25 +1,4 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC: 
  * Copyright 2008, QNX Software Systems.  
  *  
@@ -133,14 +112,14 @@
 									(_cmd) == SC_GET_CONFIGURATION || \
 									(_cmd) == SC_GET_EVENT_STATUS )
 
-#define SC_RW_CMD( _cmd )			( ((_cmd) == SC_READ) || \
-									((_cmd) == SC_READ10) || \
-									((_cmd) == SC_READ12) || \
-									((_cmd) == SC_READ16) || \
-									((_cmd) == SC_WRITE) || \
-									((_cmd) == SC_WRITE10) || \
-									((_cmd) == SC_WRITE12) || \
-									((_cmd) == SC_WRITE16) )
+#define SC_RW_CMD( _cmd )			( (_cmd) == SC_READ || \
+									(_cmd) == SC_READ10 || \
+									(_cmd) == SC_READ12 || \
+									(_cmd) == SC_READ16 || \
+									(_cmd) == SC_WRITE || \
+									(_cmd) == SC_WRITE10 || \
+									(_cmd) == SC_WRITE12 || \
+									(_cmd) == SC_WRITE16 )
 
 #define SC_RW_MAX_LBA32				0xffffffff
 #define SC_RW_MAX_LBA16				0xffff
@@ -504,7 +483,6 @@ typedef union _cdb {
 #define WS_OPT_UNMAP	0x08
 #define WS_OPT_PBDATA	0x04
 #define WS_OPT_LBDATA	0x02
-#define WS_OPT_NDOB		0x01
 		uchar_t		opt;
 		uchar_t		lba[8];
 		uchar_t		transfer_len[4];
@@ -1304,14 +1282,13 @@ typedef struct _scsi_inquiry {
 		#define ASCQ_UNRECOVERABLE_CIRC				0x06
 
 #define SK_ILLEGAL		5		// Illegal Request (bad command)
-	#define ASC_INVALID_COMMAND						0x20
-	#define ASC_LOGICAL_BLOCK_ADDRESS_OUT_OF_RANGE	0x21
-	#define ASC_INVALID_FIELD						0x24
-	#define ASC_INVALID_FIELD_PARAMETER				0x26
-	#define ASC_COMMAND_SEQUENCE_ERROR				0x2c
-		#define ASCQ_READ_SCRAMBLED					0x03
-	#define ASC_ILLEGAL_MODE						0x64
-	#define ASC_COPY_PROTECTION						0x6f
+	#define ASC_INVALID_COMMAND			0x20
+	#define ASC_INVALID_FIELD			0x24
+	#define ASC_INVALID_FIELD_PARAMETER	0x26
+	#define ASC_COMMAND_SEQUENCE_ERROR	0x2c
+		#define ASCQ_READ_SCRAMBLED		0x03
+	#define ASC_ILLEGAL_MODE			0x64
+	#define ASC_COPY_PROTECTION			0x6f
 
 #define SK_UNIT_ATN		6		// Unit Attention
 	#define ASC_MEDIUM_CHANGED					0x28
@@ -1495,26 +1472,6 @@ typedef struct _block_limits_ext {
 	uchar_t		stream_granularity_size[4];
 	uchar_t		rsvd14;
 } BLOCK_LIMITS_EXT;
-
-typedef struct _logical_block_provisioning {
-	uchar_t		threshold_exp;
-#define LBP_FLG_LBPU		0x80
-#define LBP_FLG_LBPWS		0x40
-#define LBP_FLG_LBPWS10		0x20
-#define LBP_FLG_LBPRZ_MSK	0x0c
-#define LBP_FLG_LBPRZ_PIP	0x08
-#define LBP_FLG_LBPRZ_ZERO	0x04
-#define LBP_FLG_LBPRZ_VS	0x00
-#define LBP_FLG_ANC_SUP		0x02
-#define LBP_FLG_DP			0x01
-	uchar_t		flags;
-#define LBP_PTYPE_MSK		0x07
-#define LBP_PTYPE_THIN		0x02
-#define LBP_PTYPE_RSRC		0x01
-#define LBP_PTYPE_NA		0x00
-	uchar_t		minp_ptype;			// minimum percentage, provision_type
-	uchar_t		threshold_percentage;
-} LOGICAL_BLOCK_PROVISIONING;
 
 typedef struct _ata_device_signature {
 #define ADS_TID_PATA	0x00
@@ -2286,4 +2243,9 @@ typedef struct _report_luns_parm_header {
 
 #include <_packpop.h>
 
+#endif
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/devb/include/ntoscsi.h $ $Rev: 890131 $")
 #endif

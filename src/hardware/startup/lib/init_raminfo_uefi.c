@@ -1,46 +1,26 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
- * Copyright 2015,2022, BlackBerry Limited.
- *
- * Licensed under the Apache License, Version 2.0 (the "License"). You
- * may not reproduce, modify or distribute this software except in
- * compliance with the License. You may obtain a copy of the License
- * at: http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" basis,
+ * $QNXLicenseC:
+ * Copyright 2015, QNX Software Systems. 
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License"). You 
+ * may not reproduce, modify or distribute this software except in 
+ * compliance with the License. You may obtain a copy of the License 
+ * at: http://www.apache.org/licenses/LICENSE-2.0 
+ * 
+ * Unless required by applicable law or agreed to in writing, software 
+ * distributed under the License is distributed on an "AS IS" basis, 
  * WITHOUT WARRANTIES OF ANY KIND, either express or implied.
  *
- * This file may contain contributions from others, either as
- * contributors under the License or as licensors under other terms.
- * Please review this entire file for other proprietary rights or license
- * notices, as well as the QNX Development Suite License Guide at
+ * This file may contain contributions from others, either as 
+ * contributors under the License or as licensors under other terms.  
+ * Please review this entire file for other proprietary rights or license 
+ * notices, as well as the QNX Development Suite License Guide at 
  * http://licensing.qnx.com/license-guide/ for other information.
  * $
  */
 
 
-#include <startup.h>
+#include "startup.h"
 #include "hw/uefi.h"
 
 static _Uintn
@@ -99,10 +79,6 @@ do_raminfo(void) {
 			case EfiUnusableMemory:
 			case EfiMemoryMappedIO:
 			case EfiMemoryMappedIOPortSpace:
-				if (debug_flag > 3) {
-				    kprintf("memory type: %d PhysicalStart: %L size: %L (%L)\n",
-										desc->Type, desc->PhysicalStart, nbytes, desc->NumberOfPages);
-				}
 				break;
 			case EfiACPIReclaimMemory:
 			case EfiACPIMemoryNVS:
@@ -123,23 +99,15 @@ do_raminfo(void) {
 					*owner = NULL;
 				}
 				/* FALLTHROUGH */
-			case EfiConventionalMemory:
+			case EfiConventionalMemory:	
 				if(desc->PhysicalStart != ending_paddr) {
 					if(starting_paddr != NULL_PADDR) {
 						add_ram(starting_paddr, ending_paddr - starting_paddr);
-						if (debug_flag > 2) {
-						    kprintf("add_ram: starting_paddr: %L size: %L (%L)\n",
-							        starting_paddr, (ending_paddr - starting_paddr), (ending_paddr - starting_paddr)/0x1000);
-						}
 					}
 					starting_paddr = desc->PhysicalStart;
 					ending_paddr = starting_paddr;
 				}
 				ending_paddr += nbytes;
-				if (debug_flag > 2) {
-				    kprintf("memory type: %d PhysicalStart: %L size:%L (%L)\n",
-						    desc->Type, desc->PhysicalStart, nbytes, desc->NumberOfPages);
-				}
 				break;
 			default:
 				crash("Unexpected memory type: %d\n", desc->Type);
@@ -150,9 +118,6 @@ do_raminfo(void) {
 	}
 	if(starting_paddr != ending_paddr) {
 		add_ram(starting_paddr, ending_paddr - starting_paddr);
-		if (debug_flag > 1) {
-		    kprintf("add_ram: start: %L size: %L\n", starting_paddr, ending_paddr - starting_paddr);
-		}
 	}
 	//Tell the library about all the areas we need to avoid
 	while(avoid_list != NULL) {
@@ -165,10 +130,6 @@ do_raminfo(void) {
 		case EfiRuntimeServicesData:
 			// This memory we can't use at all
 			alloc_ram(avoid_list->PhysicalStart, nbytes, 0);
-			if (debug_flag > 2) {
-			    kprintf("alloc_ram: Type: %d PhysicalStart: %L size: %L (%L)\n",
-					    avoid_list->Type, avoid_list->PhysicalStart, nbytes, nbytes/0x1000);
-			}
 			break;
 		case EfiLoaderCode:
 		case EfiLoaderData:
@@ -176,10 +137,6 @@ do_raminfo(void) {
 		case EfiBootServicesData:
 			// This memory, we can use after startup is done
 			avoid_ram(avoid_list->PhysicalStart, nbytes);
-			if (debug_flag > 2) {
-			    kprintf("avoid_ram: Type: %d PhysicalStart: %L size: %L (%L)\n",
-					    avoid_list->Type, avoid_list->PhysicalStart, nbytes, nbytes/0x1000);
-			}
 			break;
 		}
 		avoid_list = (void *)(uintptr_t)avoid_list->VirtualStart;
@@ -200,3 +157,8 @@ init_raminfo_uefi(void) {
 
 	return 1;
 }
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/startup/lib/init_raminfo_uefi.c $ $Rev: 915201 $")
+#endif

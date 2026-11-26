@@ -1,25 +1,4 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC: 
  * Copyright 2008, QNX Software Systems.  
  *  
@@ -323,21 +302,26 @@ typedef struct _mmcsd_rpmb_req {
     paddr64_t			rpmb_frame_paddr;
 } MMCSD_RPMB_REQ;
 
-#define DCMD_MMCSD_GET_CID				(__DIOTF(_DCMD_CAM, _SIM_MMCSD + 0, struct _mmcsd_cid))
-#define DCMD_MMCSD_WRITE_PROTECT		(__DIOTF(_DCMD_CAM, _SIM_MMCSD + 1, struct _mmcsd_write_protect))
-#define DCMD_MMCSD_GET_CSD				(__DIOTF(_DCMD_CAM, _SIM_MMCSD + 2, struct _mmcsd_csd))
-#define DCMD_MMCSD_ERASE				(__DIOTF(_DCMD_CAM, _SIM_MMCSD + 3, struct _mmcsd_erase))
-#define DCMD_MMCSD_CARD_REGISTER		(__DIOTF(_DCMD_CAM, _SIM_MMCSD + 4, struct _mmcsd_card_register))
-#define DCMD_MMCSD_GET_ECCERR_ADDR		(__DIOTF(_DCMD_CAM, _SIM_MMCSD + 5, int32_t))
-#define DCMD_MMCSD_VUC_CMD				(__DIOTF(_DCMD_CAM, _SIM_MMCSD + 6, struct _mmcsd_vuc_cmd))
+#define DCMD_MMCSD_GET_CID				__DIOTF(_DCMD_CAM, _SIM_MMCSD + 0, struct _mmcsd_cid)
+#define DCMD_MMCSD_WRITE_PROTECT		__DIOTF(_DCMD_CAM, _SIM_MMCSD + 1, struct _mmcsd_write_protect)
+#define DCMD_MMCSD_GET_CSD				__DIOTF(_DCMD_CAM, _SIM_MMCSD + 2, struct _mmcsd_csd)
+#define DCMD_MMCSD_ERASE				__DIOTF(_DCMD_CAM, _SIM_MMCSD + 3, struct _mmcsd_erase)
+#define DCMD_MMCSD_CARD_REGISTER		__DIOTF(_DCMD_CAM, _SIM_MMCSD + 4, struct _mmcsd_card_register)
+#define DCMD_MMCSD_GET_ECCERR_ADDR		__DIOTF(_DCMD_CAM, _SIM_MMCSD + 5, int32_t)
+#define DCMD_MMCSD_VUC_CMD				__DIOTF(_DCMD_CAM, _SIM_MMCSD + 6, struct _mmcsd_vuc_cmd)
 
 /*RPMB devctls */
-#define DCMD_MMCSD_RPMB_RW_FRAME        (__DIOTF(_DCMD_CAM, _SIM_MMCSD + 50, struct _mmcsd_rpmb_req))
+#define DCMD_MMCSD_RPMB_RW_FRAME        __DIOTF(_DCMD_CAM, _SIM_MMCSD + 50, struct _mmcsd_rpmb_req)
 /*_SIM_MMCSD + 51 was RPMB_READ_RESPONSE, now rolled into the above. */
-#define DCMD_MMCSD_GET_CID_RAW			(__DIOF(_DCMD_CAM, _SIM_MMCSD + 52, uint32_t[4]))
-#define DCMD_MMCSD_ERASED_VAL			(__DIOF(_DCMD_CAM, _SIM_MMCSD + 53, uint8_t))
-#define DCMD_MMCSD_RPMB_SIZE			(__DIOF(_DCMD_CAM, _SIM_MMCSD + 54, uint8_t))
+#define DCMD_MMCSD_GET_CID_RAW			__DIOF(_DCMD_CAM, _SIM_MMCSD + 52, uint32_t[4])
+#define DCMD_MMCSD_ERASED_VAL			__DIOF(_DCMD_CAM, _SIM_MMCSD + 53, uint8_t)
+#define DCMD_MMCSD_RPMB_SIZE			__DIOF(_DCMD_CAM, _SIM_MMCSD + 54, uint8_t)
 
 #include <_packpop.h>
 
+#endif
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/devb/sdmmc/public/hw/dcmd_sim_mmcsd.h $ $Rev: 805416 $")
 #endif

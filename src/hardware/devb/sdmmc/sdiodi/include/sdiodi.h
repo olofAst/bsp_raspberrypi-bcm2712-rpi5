@@ -1,27 +1,6 @@
 /*
- * Notice on Software Maturity and Quality
- *
- * The software included in this repository is classified under our Software Maturity Standard as Experimental Software - Software Quality and Maturity Level (SQML) 1.
- *
- * As defined in the QNX Development License Agreement, Experimental Software represents early-stage deliverables intended for evaluation or proof-of-concept purposes.
- *
- * SQML 1 indicates that this software is provided without one or more of the following:
- *     - Formal requirements
- *     - Formal design or architecture
- *     - Formal testing
- *     - Formal support
- *     - Formal documentation
- *     - Certifications of any type
- *     - End-of-Life or End-of-Support policy
- *
- * Additionally, this software is not monitored or scanned under our Cybersecurity Management Standard.
- *
- * No warranties, guarantees, or claims are offered at this SQML level.
- */
-
-/*
  * $QNXLicenseC:
- * Copyright (c) 2007, 2008, 2024, BlackBerry Limited. All rights reserved.
+ * Copyright 2007, 2008, QNX Software Systems.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"). You
  * may not reproduce, modify or distribute this software except in
@@ -40,18 +19,18 @@
  * $
  */
 
-#ifndef _SDIODI_H_INCLUDED
-#define _SDIODI_H_INCLUDED
-
 #include <inttypes.h>
 #include <sys/types.h>
+
+#ifndef _SDIODI_H_INCLUDED
+#define _SDIODI_H_INCLUDED
 
 #define	SDIO_SUCCESS				0
 #define	SDIO_FAILURE				1
 #define	SDIO_FALSE					0
 #define	SDIO_TRUE					1
 #define SDIO_TIME_DEFAULT			1000
-#define SDIO_BKOPS_MAX_TIMEOUT		(4 * 60 * 1000)
+#define SDIO_BKOPS_MAX_TIMEOUT		(4* 60 * 1000)
 
 #define SDIO_DATA_PTR_V( _p )		( (void *)(uintptr_t)(_p) )
 #define SDIO_DATA_PTR_P( _p )		( (uintptr_t)(_p) )
@@ -231,7 +210,7 @@ struct _sdio_sge {
 #define CS_DATA_END_ERR		0x0a
 #define CS_CARD_REMOVED		0x0b
 
-#define SDIO_CONNECT_WILDCARD	(-1)
+#define SDIO_CONNECT_WILDCARD	-1
 struct _sdio_device_ident {
 	_Uint16t		vid;						// Vendor ID
 	_Uint16t		did;						// Device ID
@@ -276,30 +255,29 @@ struct _sdio_dev_info {
 
 	_Uint32t			security;
 
-#define DEV_CAP_HC				(1ULL << 0)	// high capacity
-#define DEV_CAP_HS				(1ULL << 1)	// high speed
-#define DEV_CAP_HS200			(1ULL << 2)	// high speed 200
-#define DEV_CAP_DDR50			(1ULL << 3)	// DDR
-#define DEV_CAP_UHS				(1ULL << 4)	// UHS
-#define DEV_CAP_TRIM			(1ULL << 5)	// TRIM supported
-#define DEV_CAP_SECURE			(1ULL << 6)	// Secure Purge supported
+#define DEV_CAP_HC				(1 << 0)	// high capacity
+#define DEV_CAP_HS				(1 << 1)	// high speed
+#define DEV_CAP_HS200			(1 << 2)	// high speed 200
+#define DEV_CAP_DDR50			(1 << 3)	// DDR
+#define DEV_CAP_UHS				(1 << 4)	// UHS
+#define DEV_CAP_TRIM			(1 << 5)	// TRIM supported
+#define DEV_CAP_SECURE			(1 << 6)	// Secure Purge supported
 #define DEV_CAP_SECURE_TRIM		(DEV_CAP_SECURE | DEV_CAP_TRIM)
-#define DEV_CAP_SANITIZE		(1ULL << 7)	// SANITIZE supported
-#define DEV_CAP_BKOPS			(1ULL << 8)	// Background Operations supported
-#define DEV_CAP_CMD23			(1ULL << 9)	// CMD23 supported
-#define DEV_CAP_SLEEP			(1ULL << 10)	// SLEEP/AWAKE supported
-#define DEV_CAP_ASSD			(1ULL << 11)	// ASSD
-#define DEV_CAP_HPI_CMD12		(1ULL << 12)
-#define DEV_CAP_HPI_CMD13		(1ULL << 13)
-#define DEV_CAP_DISCARD			(1ULL << 14)	// Discard supported
-#define DEV_CAP_CACHE			(1ULL << 15)
-#define DEV_CAP_HS400			(1ULL << 16)
-#define DEV_CAP_PWROFF_NOTIFY	(1ULL << 17)	// Power off notify supported
-#define DEV_CAP_HS400ES			(1ULL << 18)
-#define DEV_CAP_BKOPS_AUTO		(1ULL << 19)	// Auto Background Operations supported
-#define DEV_CAP_UC				(1ULL << 20)	// Ultra Capacity (2TB - 128TB)
-#define DEV_CAP_WR_REL			(1ULL << 21)	// Reliable Write supported
-#define DEV_CAP_WR_REL_ENH		(1ULL << 22)	// Enhanced Reliable Write supported
+#define DEV_CAP_SANITIZE		(1 << 7)	// SANITIZE supported
+#define DEV_CAP_BKOPS			(1 << 8)	// Background Operations supported
+#define DEV_CAP_CMD23			(1 << 9)	// CMD23 supported
+#define DEV_CAP_SLEEP			(1 << 10)	// SLEEP/AWAKE supported
+#define DEV_CAP_ASSD			(1 << 11)	// ASSD
+#define DEV_CAP_HPI_CMD12		(1 << 12)
+#define DEV_CAP_HPI_CMD13		(1 << 13)
+#define DEV_CAP_DISCARD			(1 << 14)	// Discard supported
+#define DEV_CAP_CACHE			(1 << 15)
+#define DEV_CAP_HS400			(1 << 16)
+#define DEV_CAP_PWROFF_NOTIFY	(1 << 17)	// Power off notify supported
+#define DEV_CAP_HS400ES			(1 << 18)
+#define DEV_CAP_BKOPS_AUTO		(1 << 19)	// Auto Background Operations supported
+#define DEV_CAP_UC				(1 << 20)	// ultra capacity (2TB - 128TB)
+
 	_Uint64t			caps;
 
 	_Uint32t			dtr;			// current data transfer rate
@@ -331,70 +309,32 @@ struct _sdio_dev_info {
 #define SPEED_CLASS_10	0x04
 	_Uint32t			speed_class;
 
-	_Uint32t			rel_wr_sec_c;
-
-	_Uint32t			rsvd[14];
+	_Uint32t			rsvd[15];
 };
 
 struct _sdio_hc_info {
 #define SDIO_NAME_MAX		64
 	char			name[SDIO_NAME_MAX];
-
-#define	HC_CAP_SLOT_TYPE_EMBEDDED	(1ULL << 0)	// embedded card
-#define	HC_CAP_PIO					(1ULL << 1)	// supports PIO
-#define	HC_CAP_DMA					(1ULL << 2)	// supports DMA 32 bit address
-#define	HC_CAP_DMA64				(3ULL << 2)	// supports DMA 64 bit address
+#define	HC_CAP_SLOT_TYPE_EMBEDDED	(1 << 0)	// embedded card
+#define	HC_CAP_PIO					(1 << 1)	// supports PIO
+#define	HC_CAP_DMA					(1 << 2)	// supports DMA 32 bit address
+#define	HC_CAP_DMA64				(3 << 2)	// supports DMA 64 bit address
 #define	HC_CAP_DMA_MSK				(HC_CAP_DMA | HC_CAP_DMA64)
-#define	HC_CAP_BW4					(1ULL << 4)	// 4 bit bus supported
-#define	HC_CAP_BW8					(1ULL << 5)	// 8 bit bus supported
-#define HC_CAP_BW_MSK				( HC_CAP_BW4 | HC_CAP_BW8 )
-#define	HC_CAP_ACMD12				(1ULL << 6)	// auto stop cmd(12) supported
-#define	HC_CAP_ACMD23				(1ULL << 7)	// auto set block count cmd(23) supported
-#define HC_CAP_SLEEP				(1ULL << 8)
+#define	HC_CAP_BW4					(1 << 4)	// 4 bit bus supported
+#define	HC_CAP_BW8					(1 << 5)	// 8 bit bus supported
+#define	HC_CAP_ACMD12				(1 << 6)	// auto stop cmd(12) supported
+#define	HC_CAP_ACMD23				(1 << 7)	// auto set block count cmd(23) supported
+#define HC_CAP_SLEEP				(1 << 8)
 
-#define	HC_CAP_HS					(1ULL << 9)	// High speed device supported
-#define	HC_CAP_SDR12				(1ULL << 10)
-#define	HC_CAP_SDR25				(1ULL << 11)
-#define	HC_CAP_SDR50				(1ULL << 12)
-#define	HC_CAP_SDR104				(1ULL << 13)
-#define	HC_CAP_DDR50				(1ULL << 14)	// Dual Data Rate supported
-#define HC_CAP_UHS( _caps )			( (_caps) & ( HC_CAP_SDR12 | HC_CAP_SDR25 | \
-										HC_CAP_SDR50 | HC_CAP_SDR104 | HC_CAP_DDR50) )
-#define	HC_CAP_HS200				(1ULL << 15)
-#define	HC_CAP_HS400				(1ULL << 16)
-#define HC_CAP_TIMING_MSK			( HC_CAP_HS | HC_CAP_DDR50 |		\
-										HC_CAP_SDR12 | HC_CAP_SDR25 |	\
-										HC_CAP_SDR50 | HC_CAP_SDR104 |	\
-										HC_CAP_HS200 | HC_CAP_HS400 | HC_CAP_HS400ES)
-
-#define	HC_CAP_XPC_3_3V				(1ULL << 17)	// > 150mA at 3.3V is supported
-#define	HC_CAP_XPC_3_0V				(1ULL << 18)	// > 150mA at 3.0V is supported
-#define	HC_CAP_XPC_1_8V				(1 << 19)	// > 150mA at 1.8V is supported
-#define HC_CAP_XPC( _caps )			( ( ( _caps ) >> 17 ) & 0x07 )
-
-#define	HC_CAP_200MA				(1ULL << 20)	// 200mA at 1.8V
-#define	HC_CAP_400MA				(1ULL << 21)	// 400mA at 1.8V
-#define	HC_CAP_600MA				(1ULL << 22)	// 600mA at 1.8V
-#define	HC_CAP_800MA				(1ULL << 23)	// 800mA at 1.8V
-#define HC_CAP_CURRENT( _caps )		( ( ( ( _caps ) >> 20 ) ) & 0x0f )
-
-#define	HC_CAP_DRV_TYPE_B			(1ULL << 24)
-#define	HC_CAP_DRV_TYPE_A			(1ULL << 25)
-#define	HC_CAP_DRV_TYPE_C			(1ULL << 26)
-#define	HC_CAP_DRV_TYPE_D			(1ULL << 27)
-#define	HC_CAP_DRV_TYPES( _caps )	( ( ( ( _caps ) >> 24 ) ) & 0x0f )
-
-
-#define HC_CAP_SV( _caps )			( ( ( ( _caps ) >> 28 ) ) & 0x0f )
-#define HC_CAP_SV_1_2V				(1ULL << 28)	// 1.2V signal voltage supported
-#define HC_CAP_SV_1_8V				(1ULL << 29)	// 1.8V signal voltage supported
-#define HC_CAP_SV_3_0V				(1ULL << 30)	// 3.0V signal voltage supported
-#define HC_CAP_SV_3_3V				(1ULL << 31)	// 3.3V signal voltage supported
-
-#define	HC_CAP_CD_INTR				(1ULL << 32)	// card detect interrupt supported
-#define HC_CAP_BSY					(1ULL << 33)	// card detect busy supported
-#define	HC_CAP_HS400ES				(1ULL << 34)	// hs400 enhanced strobe supported
-#define HC_CAP_CD_WP				(1ULL << 35)	// card detect write protect supported
+#define	HC_CAP_HS					(1 << 9)	// High speed device supported
+#define	HC_CAP_SDR12				(1 << 10)
+#define	HC_CAP_SDR25				(1 << 11)
+#define	HC_CAP_SDR50				(1 << 12)
+#define	HC_CAP_SDR104				(1 << 13)
+#define	HC_CAP_DDR50				(1 << 14)	// Dual Data Rate supported
+#define HC_CAP_HS200				(1 << 15)
+#define HC_CAP_HS400				(1 << 16)
+#define HC_CAP_HS400ES				(1LL << 34)
 	_Uint64t		caps;
 	_Uint32t		version;
 	_Uint32t		sg_max;
@@ -404,7 +344,7 @@ struct _sdio_hc_info {
 	_Uint32t		bus_width;					// Current Bus Width
 	_Uint32t		idle_time;					// PM Idle Time in ms
 	_Uint32t		sleep_time;					// PM Sleep Time in ms
-	_Uint32t		rsvd[12];
+	_Uint32t		rsvd[10];
 };
 
 struct _sdio_funcs {
@@ -413,7 +353,7 @@ struct _sdio_funcs {
 	void		(*insertion)( struct sdio_connection *, sdio_device_instance_t * );
 	void		(*removal)( struct sdio_connection *, sdio_device_instance_t * );
 #define SDIO_EVENT_RESET	1
-	int			(*event)( struct sdio_connection *, sdio_device_instance_t *, int ev );
+	void		(*event)( struct sdio_connection *, sdio_device_instance_t *, int ev );
 };
 
 struct _sdio_connect_parm {
@@ -430,29 +370,28 @@ struct _sdio_connect_parm {
 
 extern void				*sdio_alloc( size_t size );
 extern int				sdio_free( void *ptr, size_t size );
-extern int				sdio_verbosity( struct sdio_device *device, uint32_t flags, int verbosity );
-extern int				sdio_idle( struct sdio_device *device );
+extern int				sdio_verbosity( struct sdio_device *device, int flags, int verbosity );
+extern int				sdio_idle( struct sdio_device * );
 #define PM_IDLE		0
 #define PM_ACTIVE	1
 #define PM_SLEEP	2
-#define PM_SUSPEND	3
-extern int				sdio_pwrmgnt( struct sdio_device *device, uint32_t action );
+extern int				sdio_pwrmgnt( struct sdio_device *, int action );
 extern int				sdio_reset( struct sdio_device *device );
 extern int				sdio_bus_error( struct sdio_device *device );
 extern int				sdio_hpi( struct sdio_device *device, uint32_t timeout);
-extern int				sdio_send_status( struct sdio_device *device, _Uint32t *rsp, int hpi );
+extern int				sdio_send_status( struct sdio_device *, _Uint32t *rsp, int hpi );
 extern int				sdio_wait_card_status( struct sdio_device *device, uint32_t *rsp, uint32_t mask, uint32_t val, uint32_t msec );
 extern int				sdio_stop_transmission( struct sdio_device *device, int hpi );
-extern int				sdio_set_block_count( struct sdio_device *device, uint32_t blkcnt, uint32_t flgs );
-extern int				sdio_set_block_length( struct sdio_device *device, uint32_t blklen );
-extern int				sdio_lock_unlock( struct sdio_device *device, int action, uint8_t *pwd, uint32_t pwd_len );
-extern int				sdio_set_partition( struct sdio_device *device, _Uint32t partition );
-extern int				sdio_erase( struct sdio_device *device, uint32_t partition, uint32_t flgs,
-							uint64_t lba, uint32_t nlba );
+extern int				sdio_set_block_count( struct sdio_device *device, int blkcnt, uint32_t flgs );
+extern int				sdio_set_block_length( struct sdio_device *device, int blklen );
+extern int				sdio_lock_unlock( struct sdio_device *device, int action, uint8_t *pwd, int pwd_len );
+extern int				sdio_set_partition( struct sdio_device *, _Uint32t partition );
+extern int				sdio_erase( struct sdio_device *, int partition, int flgs,
+							uint64_t lba, int nlba );
 extern struct sdio_cmd	*sdio_alloc_cmd( void );
-extern void				sdio_free_cmd( struct sdio_cmd *cmd );
-extern int				sdio_cmd_status( const struct sdio_cmd *cmd, _Uint32t *status, _Uint32t *rsp );
-extern int				sdio_send_cmd( struct sdio_device *device, struct sdio_cmd *cmd,
+extern void				sdio_free_cmd( struct sdio_cmd * );
+extern int				sdio_cmd_status( struct sdio_cmd *cmd, _Uint32t *status, _Uint32t *rsp );
+extern int				sdio_send_cmd( struct sdio_device *dev, struct sdio_cmd *cmd,
 							void (*func)( struct sdio_device *, struct sdio_cmd *, void *),
 							_Uint32t timeout, int retries );
 extern int				sdio_setup_cmd( struct sdio_cmd *cmd, _Uint32t flgs,
@@ -460,45 +399,45 @@ extern int				sdio_setup_cmd( struct sdio_cmd *cmd, _Uint32t flgs,
 extern int				sdio_setup_cmd_ext( struct sdio_cmd *cmd, _Uint32t flgs,
 							_Uint32t op, _Uint32t arg, _Uint32t earg );
 extern int				sdio_setup_cmd_io( struct sdio_cmd *cmd, _Uint32t flgs,
-							uint32_t blks, uint32_t blksz, void *sgl, uint32_t sgc, void *mhdl );
+							int blks, int blksz, void *sgl, int sgc, void *mhdl );
 
 extern void				*sdio_client_hdl( struct sdio_device *device );
-extern void				*sdio_bs_hdl( struct sdio_device *device );
-extern sdio_cid_t		*sdio_get_cid( struct sdio_device *device );
-extern void				*sdio_get_raw_cid( struct sdio_device *device );
-extern sdio_csd_t		*sdio_get_csd( struct sdio_device *device );
-extern void				*sdio_get_raw_csd( struct sdio_device *device );
-extern sdio_ecsd_t		*sdio_get_ecsd( struct sdio_device *device );
-extern void				*sdio_get_raw_ecsd( struct sdio_device *device );
-extern void				*sdio_get_raw_scr( struct sdio_device *device );
+extern void				*sdio_bs_hdl( struct sdio_device *dev );
+extern sdio_cid_t		*sdio_get_cid( struct sdio_device *dev );
+extern void				*sdio_get_raw_cid( struct sdio_device *dev );
+extern sdio_csd_t		*sdio_get_csd( struct sdio_device *dev );
+extern void				*sdio_get_raw_csd( struct sdio_device *dev );
+extern sdio_ecsd_t		*sdio_get_ecsd( struct sdio_device *dev );
+extern void				*sdio_get_raw_ecsd( struct sdio_device *dev );
+extern void				*sdio_get_raw_scr( struct sdio_device *dev );
 extern int				sdio_sd_switch( struct sdio_device *device, int mode, int grp, uint8_t val, uint8_t *switch_status );
 extern int				sdio_mmc_switch( struct sdio_device *device, uint32_t cmdset, uint32_t mode, uint32_t index, uint32_t value, uint32_t timeout );
 extern int				sdio_send_ext_csd( struct sdio_device *device, uint8_t *csd );
-extern int				sdio_mmc_rpmb_rw( struct sdio_device *device, void *pf, uint32_t nf, uint32_t flgs );
-extern int				sdio_mmc_gen_man( struct sdio_device *device, uint8_t op, void *buf, uint32_t blklen, uint32_t blkcnt, uint32_t arg, uint32_t flgs);
-extern int				sdio_hc_info( const struct sdio_device *device, sdio_hc_info_t *info );
-extern int				sdio_dev_info( const struct sdio_device *device, sdio_dev_info_t *info );
+extern int				sdio_mmc_rpmb_rw( struct sdio_device *device, void *pf, int nf, int flgs );
+extern int				sdio_mmc_gen_man( struct sdio_device *device, uint8_t op, void *buf, int blklen, int blkcnt, uint32_t arg, uint32_t flgs);
+extern int				sdio_hc_info( struct sdio_device *dev, sdio_hc_info_t *info );
+extern int				sdio_dev_info( struct sdio_device *device, sdio_dev_info_t *info );
 extern int				sdio_retune( struct sdio_device *device );
-extern int				sdio_app_read_status( struct sdio_device* const device, _Uint32t *rsp );
 #define SDIO_CACHE_DISABLE	0
 #define SDIO_CACHE_ENABLE	1
 #define SDIO_CACHE_FLUSH	2
-extern int				sdio_cache( struct sdio_device *device, int op, uint32_t timeout );
-extern int				sdio_set_partition( struct sdio_device *device, _Uint32t partition );
-extern struct sdio_device *sdio_device_lookup( struct sdio_connection *connection, sdio_device_instance_t *instance );
+extern int				sdio_cache( struct sdio_device *dev, int op, uint32_t timeout );
+extern int				sdio_set_partition( struct sdio_device *dev, _Uint32t partition );
+extern struct sdio_device *sdio_device_lookup( struct sdio_connection *connection,
+							sdio_device_instance_t *instance );
 extern int				sdio_timer_settime( int tid, uint32_t sec, uint32_t nsec, int repeat );
 extern int				sdio_connect( sdio_connect_parm_t *parm, struct sdio_connection **connection );
 #define SDIO_ENUM_DISABLE	0
 #define SDIO_ENUM_ENABLE	1
 extern int				sdio_enum( struct sdio_connection *connection, int action );
 extern int				sdio_disconnect( struct sdio_connection *connection );
-extern int				sdio_attach( const struct sdio_connection *connection, sdio_device_instance_t *instance, struct sdio_device **hdl, void *client_hdl );
-extern int				sdio_detach( struct sdio_device *device );
+extern int				sdio_attach( struct sdio_connection *connection, sdio_device_instance_t *instance, struct sdio_device **dev, void *client_hdl );
+extern int				sdio_detach( struct sdio_device *dev );
 
-#define SDIO_POWERED_OFF		0x00
-#define SDIO_POWERED_ON			0x01
-#define SDIO_POWER_OFF_SHORT	0x02
-#define SDIO_POWER_OFF_LONG		0x03
-extern int				sdio_pwroff_notify( struct sdio_device *device, int op, int timeout );
+#endif
 
+
+#if defined(__QNXNTO__) && defined(__USESRCVERSION)
+#include <sys/srcversion.h>
+__SRCVERSION("$URL: http://svn.ott.qnx.com/product/branches/7.1.0/trunk/hardware/devb/sdmmc/sdiodi/include/sdiodi.h $ $Rev: 933186 $")
 #endif
