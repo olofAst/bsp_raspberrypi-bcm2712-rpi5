@@ -84,12 +84,64 @@ char *find_next_arg(char *str, char ** const end, const unsigned terminate) {
     return str;
 }
 
+/**
+ * GIC interrupt of the debug UART (UART10, 0x107d001000).
+ * It moved between chip steppings: 153 on Pi 5 rev 1.0 (BCM2712 C1), 152 on
+ * D0 boards (Pi 5 rev 1.1+, CM5, Pi 500). The device tree is used when it has
+ * the node, otherwise the board revision decides.
+ */
+static unsigned bcm2712_uart10_irq(void)
+{
+    const uint32_t rev = get_board_revision();
+    const uint32_t type = (rev >> 4) & 0xffU;
+    unsigned irq = ((type > 0x17U) || ((type == 0x17U) && ((rev & 0xfU) >= 1U))) ? 152U : 153U;
+
+    if (fdt != NULL) {
+        int node = -1;
+        for (;;) {
+            int len;
+            node = fdt_node_offset_by_compatible(fdt, node, "arm,pl011");
+            if (node < 0) {
+                break;
+            }
+            const fdt32_t * const reg = fdt_getprop(fdt, node, "reg", &len);
+            if ((reg == NULL) || (len < (int)(2 * sizeof(fdt32_t)))) {
+                continue;
+            }
+            if ((fdt32_to_cpu(reg[0]) != 0x7d001000U) && (fdt32_to_cpu(reg[1]) != 0x7d001000U)) {
+                continue;
+            }
+            const fdt32_t * const intr = fdt_getprop(fdt, node, "interrupts", &len);
+            if ((intr != NULL) && (len == (int)(3 * sizeof(fdt32_t)))) {
+                const unsigned fdt_irq = fdt32_to_cpu(intr[1]) + 32U;
+                if (fdt_irq != irq) {
+                    kprintf("UART10 irq: board revision says %u, FDT says %u, using FDT\n", irq, fdt_irq);
+                    irq = fdt_irq;
+                }
+            }
+            break;
+        }
+    }
+    return irq;
+}
+
 void cpu_tweak_cmdline(struct bootargs_entry *bap, const char * const name) {
     // Override this function if you want to adjust the command line arguments
     // for the given bootstrap exectuable name - see:
     // bootstrap_arg_adjust()
     // bootstrap_env_adjust()
     const static char *next_arg;
+
+    if (strcmp(name, "startup") != 0) {
+        /*
+         * Environment for procnto, inherited by the boot script: lets the
+         * script start the console driver on the right interrupt.
+         */
+        static char env[24];
+        ksprintf(env, "UART10_IRQ=%u", bcm2712_uart10_irq());
+        bootstrap_env_adjust(bap, NULL, env);
+        return;
+    }
 
     if (!next_arg) { // only do this once
         char *str = mbox_get_cmdline();

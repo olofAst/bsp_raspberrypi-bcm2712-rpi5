@@ -55,7 +55,7 @@
     ## Debug console serial driver (UART10, 3-pin debug header between the HDMI ports)
     #######################################################################
     display_msg Starting serial driver (/dev/ser10)
-    devc-serpl011 -b115200 -c44236800 -e -F -u10 0x107d001000^2,153
+    ksh /proc/boot/console_start.sh
     waitfor /dev/ser10 4
     reopen /dev/ser10
 
@@ -91,6 +91,11 @@
     #######################################################################
     ksh /proc/boot/customize_startup.sh
 
+    #######################################################################
+    ## Bring-up diagnostics (remove once the console and USB work)
+    #######################################################################
+    ksh /proc/boot/diag.sh
+
     display_msg Starting shell ...
     [+session] ksh &
 }
@@ -108,17 +113,59 @@
 ################################################################################################
 ## Scripts
 ################################################################################################
+console_start.sh = {
+#!/bin/sh
+# The UART10 interrupt differs between chip steppings: 153 on Pi 5 rev 1.0,
+# 152 on BCM2712 D0 boards (Pi 5 rev 1.1+, CM5, Pi 500). Startup works it out
+# and publishes it as UART10_IRQ in the environment of procnto.
+# (the boot script does not inherit procnto's environment, so read it from there)
+# (no backslashes or braces here: mkifs would eat them)
+IRQ=$(pidin -p 1 env | sed -n 's/.*UART10_IRQ=//p' | cut -c1-3)
+if [ -z "$IRQ" ]; then IRQ=153; fi
+devc-serpl011 -b115200 -c44236800 -e -F -u10 0x107d001000^2,$IRQ
+}
+
+diag.sh = {
+#!/bin/sh
+# no shell functions here: a closing brace would end the mkifs inline file
+echo "==== DIAG: console"
+pidin -p devc-serpl011 arg
+stty -a < /dev/ser10
+echo "UART10 FR / IMSC / RIS before:"; peek 0x107d001018; peek 0x107d001038 2
+echo "AON pinmux:"; peek 0x107d510700 8
+echo "AON GPIO:"; peek 0x107d517c00 8
+echo "==== DIAG: PRESS A FEW KEYS NOW (15 seconds) ===="
+sleep 1
+# Block the UART interrupt at the GIC (clear-enable for irq 152 and 153) so the
+# driver cannot take anything: whatever reaches the UART must stay in its FIFO.
+peek 0x107fff9190 = 0x03000000
+sleep 15
+FR=$(peek 0x107d001018)
+RIS=$(peek 0x107d00103c)
+PEND=$(peek 0x107fff9210)
+IRQ=$(pidin -p 1 env | sed -n 's/.*UART10_IRQ=//p' | cut -c1-3)
+if [ "$IRQ" = "152" ]; then peek 0x107fff9110 = 0x01000000; else peek 0x107fff9110 = 0x02000000; fi
+sleep 2
+echo "after keys, UART irq blocked: FR $FR / RIS $RIS / GIC pending $PEND"
+echo "(FR bit4 0x10 set = RX FIFO empty = nothing reached the UART;"
+echo " FR bit4 clear = characters arrived, they should be echoed just above)"
+echo "==== DIAG: USB"
+usb
+ls -l /dev/umass* /dev/io-hid 2>&1
+echo "==== DIAG: done"
+}
+
 rp1_start.sh = {
 #!/bin/sh
 # Program the RP1 MSI-X vectors: 6=Ethernet 31=USB host 0 36=USB host 1,
 # 25/42..46=UART0..5. RP1 irq n is delivered as GIC interrupt 160+n.
 echo "Configuring RP1 interrupts ..."
-if msix-rp1 -i 6,31,36,25,42,43,44,45,46; then
+if msix-rp1 -v -i 6,31,36,25,42,43,44,45,46; then
     echo ok > /dev/shmem/rp1_ok
 else
     echo "RP1 is not usable: USB, RP1 UARTs and RP1 GPIO are disabled."
     echo "  msix-rp1 -d       dump the PCIe/RP1 state"
-    echo "  msix-rp1 -f -vv   try to configure the RP1 link here, then: ksh /proc/boot/usb_start.sh"
+    echo "  msix-rp1 -f -vv   also assign RP1 BARs/windows, then: ksh /proc/boot/usb_start.sh"
 fi
 }
 
@@ -139,7 +186,8 @@ gpio-rp1 set 42 a2 pn
 gpio-rp1 set 43 a2 pu
 
 # RP1 has two DWC3 xHCI controllers (each serves one USB3 and one USB2 type A port).
-# bmstr: RP1 sees host RAM at <PCI window base> + physical address (normally 0x1000000000);
+# bmstr: RP1 sees host RAM at <PCI window base> + physical address. The Pi 5 firmware leaves
+# an identity mapping (0x0); Linux would use 0x1000000000.
 # msix-rp1 -B reads the window base back from the PCIe root complex.
 BMSTR=$(msix-rp1 -B)
 io-usb-otg -d xhci ioport=0x1f00200000,irq=191,iosize=0x100000,bmstr=$BMSTR,ioport=0x1f00300000,irq=196,iosize=0x100000,bmstr=$BMSTR

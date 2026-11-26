@@ -360,6 +360,30 @@ static void force_outbound_window(void)
     out32(rc + RC_MEM_WIN0_BASE_HI + 4U, (limit_mb >> 12) & 0xffU);
 }
 
+/*
+ * The firmware maps RP1 at CPU address 0x1c_0000_0000 (outbound window 0,
+ * PCI 0x8000_0000). Linux, the SDP 8.0 BSP and every driver command line in
+ * this BSP expect the RP1 peripherals at 0x1f_0000_0000, so move the CPU side
+ * of the window there. PCI addresses, and with them the RP1 BARs, are untouched.
+ */
+static void retarget_outbound_window(void)
+{
+    const uint32_t bl = in32(rc + RC_MEM_WIN0_BASE_LIMIT);
+    const uint32_t base_mb = ((in32(rc + RC_MEM_WIN0_BASE_HI) & 0xffU) << 12) | ((bl & 0xfff0U) >> 4);
+    const uint32_t limit_mb = ((in32(rc + RC_MEM_WIN0_BASE_HI + 4U) & 0xffU) << 12) | (bl >> 20);
+    const uint32_t new_base_mb = (uint32_t)(RP1_WIN_CPU >> 20);
+    const uint32_t new_limit_mb = new_base_mb + (limit_mb - base_mb);
+
+    if ((base_mb == new_base_mb) || (limit_mb < base_mb)) {
+        return;
+    }
+    out32(rc + RC_MEM_WIN0_BASE_LIMIT, ((new_limit_mb & 0xfffU) << 20) | ((new_base_mb & 0xfffU) << 4));
+    out32(rc + RC_MEM_WIN0_BASE_HI, (new_base_mb >> 12) & 0xffU);
+    out32(rc + RC_MEM_WIN0_BASE_HI + 4U, (new_limit_mb >> 12) & 0xffU);
+    vprint(1, "outbound window 0 moved from cpu 0x%llx to 0x%llx\n",
+           (unsigned long long)base_mb << 20, (unsigned long long)RP1_WIN_CPU);
+}
+
 static void usage(void)
 {
     (void)fprintf(stderr,
@@ -446,16 +470,19 @@ int main(const int argc, char * const argv[])
         if (dump_only) {
             sec_bus = 1;        /* peek at where RP1 would be */
         }
-        else if (force) {
-            /* primary 0, secondary 1, subordinate 1 */
+        else {
+            /*
+             * The firmware talks to RP1 without ever programming the bridge's
+             * bus numbers; until they are set, bus 1 config reads return ~0.
+             * primary 0, secondary 1, subordinate 1
+             */
             out32(rc + RC_CFG_BUSES, (buses & 0xff000000U) | 0x00010100U);
             buses = in32(rc + RC_CFG_BUSES);
             sec_bus = (buses >> 8) & 0xffU;
-            (void)fprintf(stderr, "msix-rp1: assigned bus numbers to the root bridge (0x%x)\n", buses);
+            vprint(1, "assigned bus numbers to the root bridge (0x%x)\n", buses);
         }
         if (sec_bus == 0U) {
-            (void)fprintf(stderr, "msix-rp1: root bridge has no secondary bus assigned (0x%x): the firmware left the\n"
-                                  "          RP1 link unconfigured. 'msix-rp1 -d' dumps the state, 'msix-rp1 -f' configures it.\n", buses);
+            (void)fprintf(stderr, "msix-rp1: cannot assign bus numbers to the root bridge (0x%x)\n", buses);
             return EXIT_FAILURE;
         }
     }
@@ -510,7 +537,11 @@ int main(const int argc, char * const argv[])
         out32(rc + RC_CFG_COMMAND, (in32(rc + RC_CFG_COMMAND) & 0xffffU) | PCI_COMMAND_MEMORY | PCI_COMMAND_MASTER);
     }
 
-    /* CPU address of PCI memory address 0 (outbound window 0) */
+    if ((in32(rc + RC_MEM_WIN0_BASE_HI) & 0xffU) != 0U) {
+        retarget_outbound_window();
+    }
+
+    /* CPU address of the PCI memory window (outbound window 0) */
     const uint32_t win_bl = in32(rc + RC_MEM_WIN0_BASE_LIMIT);
     const uint64_t win_cpu = ((uint64_t)(in32(rc + RC_MEM_WIN0_BASE_HI) & 0xffU) << 32) |
                              ((uint64_t)((win_bl & 0xfff0U) >> 4) << 20);
