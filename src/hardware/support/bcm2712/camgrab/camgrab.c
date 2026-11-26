@@ -68,6 +68,77 @@ static int get_i(capture_context_t ctx, uint32_t prop, int32_t *val)
     return capture_get_property_i(ctx, prop, val);
 }
 
+/*
+ * The UVC driver does not tell us the frame geometry, so find the row length
+ * from the picture itself: with the right width, each row looks like the one
+ * below it. Returns the candidate width with the smallest row-to-row difference.
+ */
+static unsigned guess_width(const uint8_t *data, unsigned len, unsigned step)
+{
+    static const unsigned widths[] = { 320, 640, 800, 960, 1024, 1280, 1600, 1920 };
+    uint64_t scores[sizeof(widths) / sizeof(widths[0])];
+    uint64_t best_score = UINT64_MAX;
+    unsigned i;
+
+    for (i = 0; i < sizeof(widths) / sizeof(widths[0]); i++) {
+        const unsigned stride = widths[i] * step;
+        const unsigned rows = 24;
+        uint64_t score = 0;
+        unsigned x, y;
+
+        scores[i] = UINT64_MAX;
+        if ((stride * (rows + 9U)) > len) {
+            continue;
+        }
+        for (y = 8; y < 8U + rows; y++) {
+            const uint8_t * const a = data + (y * stride);
+            const uint8_t * const b = a + stride;
+            for (x = 0; x < stride; x += step) {
+                score += (uint64_t)abs((int)a[x] - (int)b[x]);
+            }
+        }
+        scores[i] = (score * 1000U) / (widths[i] * rows);   /* per pixel */
+        if (scores[i] < best_score) {
+            best_score = scores[i];
+        }
+    }
+    /*
+     * A multiple of the true width scores nearly as well (it compares rows two
+     * or three apart), so take the smallest width that is close to the best.
+     */
+    for (i = 0; i < sizeof(widths) / sizeof(widths[0]); i++) {
+        if ((scores[i] != UINT64_MAX) && (scores[i] <= best_score + (best_score / 3U) + 1U)) {
+            return widths[i];
+        }
+    }
+    return 0;
+}
+
+/*
+ * 16-bit little-endian grey with only 8..12 significant bits has (nearly)
+ * empty high bytes. Returns the number of significant bits, or 0 if the data
+ * does not look like that.
+ */
+static unsigned guess_grey16_bits(const uint8_t *data, unsigned len)
+{
+    unsigned i, max_hi = 0;
+
+    for (i = 1; i < len; i += 2) {
+        if (data[i] > max_hi) {
+            max_hi = data[i];
+        }
+    }
+    if (max_hi > 0x0f) {
+        return 0;
+    }
+    unsigned bits = 8;
+    while (max_hi != 0) {
+        bits++;
+        max_hi >>= 1;
+    }
+    return bits;
+}
+
 static double now(void)
 {
     struct timespec ts;
@@ -220,7 +291,7 @@ int main(int argc, char *argv[])
         }
     }
 
-    unsigned    frames = 0, errors = 0;
+    unsigned    frames = 0, errors = 0, grey_bits = 0;
     double      t0 = now();
     uint8_t    *line = NULL;
 
@@ -245,23 +316,33 @@ int main(int argc, char *argv[])
             /* work out the geometry from what actually arrived */
             if (len == 0) {
                 len = (width != 0) ? (width * height * 2U) : buf_bytes;
-                printf("driver does not report the frame length, assuming %u bytes\n", len);
+                printf("driver does not report the frame length (buffer is %u bytes)\n", len);
+            }
+            grey_bits = (layout == L_UNKNOWN) ? guess_grey16_bits(data, (len < 200000U) ? len : 200000U) : 0;
+            if (grey_bits != 0) {
+                layout = L_YUY2;        /* two bytes per pixel, value starts in the first */
             }
             if ((width == 0) || (height == 0)) {
+                const unsigned step0 = (layout == L_Y8) ? 1U : 2U;
+                width = guess_width(data, len, step0);
+                height = 0;
                 for (i = 0; i < sizeof(common_sizes) / sizeof(common_sizes[0]); i++) {
-                    const unsigned px = common_sizes[i].w * common_sizes[i].h;
-                    if ((len == px) || (len == px * 2U)) {
-                        width = common_sizes[i].w;
+                    if (common_sizes[i].w == width) {
                         height = common_sizes[i].h;
                         break;
                     }
                 }
+                if (height == 0) {
+                    height = (width * 3U) / 4U;
+                }
+                printf("frame size not reported by the driver: the picture looks %u pixels wide\n", width);
             }
-            if ((layout == L_UNKNOWN) && (width != 0)) {
-                layout = (len >= width * height * 2U) ? L_YUY2 : L_Y8;
+            if (layout == L_UNKNOWN) {
+                layout = L_YUY2;
             }
             printf("First frame: buffer %d, %u bytes, seq %u, flags 0x%x -> showing as %ux%u %s\n",
                    idx, len, seqno[idx], flags[idx], width, height,
+                   (grey_bits != 0) ? "16-bit grey (little endian)" :
                    (layout == L_Y8) ? "8-bit grey" : (layout == L_YUY2) ? "YUY2 (luma first)" :
                    (layout == L_UYVY_Y16) ? "UYVY/Y16 (luma second)" : "unknown");
             printf("  data:");
@@ -296,7 +377,15 @@ int main(int argc, char *argv[])
             /* build each row in normal memory, then copy it to the (uncached) framebuffer */
             for (y = 0; y < h; y++) {
                 const uint8_t *src = data + (y * stride) + first;
-                if (fb.bytespp == 2) {
+                if ((grey_bits > 8U) && (fb.bytespp == 2)) {
+                    /* 16-bit grey with more than 8 significant bits: scale down */
+                    uint16_t * const dst = (uint16_t *)line;
+                    const unsigned shift = grey_bits - 8U;
+                    for (x = 0; x < w; x++, src += 2) {
+                        const unsigned v = ((unsigned)src[0] | ((unsigned)src[1] << 8)) >> shift;
+                        dst[x] = lut16[(v > 255U) ? 255U : v];
+                    }
+                } else if (fb.bytespp == 2) {
                     uint16_t * const dst = (uint16_t *)line;
                     for (x = 0; x < w; x++, src += step) {
                         dst[x] = lut16[*src];
