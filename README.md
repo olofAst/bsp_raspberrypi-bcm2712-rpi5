@@ -17,6 +17,7 @@ This branch ports the SDP 8.0 BSP to **QNX SDP 7.1**. It boots to a shell in an 
 | RP1 interrupts (`msix-rp1`) | Rewritten: programs MSI-X, the MIP and the PCIe inbound window directly, no `pci-server` |
 | USB host | Stock SDP 7.1 `devu-hcd-xhci.so` on the two RP1 xHCI controllers |
 | GPIO, mailbox, watchdog, fan utilities | Build unchanged |
+| Framebuffer demo (`fbdemo-rpi5`) | New: draws into the firmware framebuffer obtained through the mailbox (no graphics driver). Verified in the emulator only |
 | Network | `io-pkt` with USB Ethernet adapters (`asix`, `smsc9500`, `usbnet`) |
 | On-board Ethernet, Wi-Fi, I2C, SPI, PCIe expansion port | **Not ported** (no SDP 7.1 drivers / frameworks); the I2C and SPI sources are kept but excluded from the build with `Makefile.dnm` |
 

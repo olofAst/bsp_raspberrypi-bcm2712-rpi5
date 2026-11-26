@@ -300,6 +300,7 @@ openssl     tags=*
 /bin/mbox-bcm=mbox-bcm
 /sbin/msix-rp1=msix-rp1
 /sbin/fan-rpi5=fan-rpi5
+/bin/fbdemo-rpi5=fbdemo-rpi5
 
 
 ################################################################################################
