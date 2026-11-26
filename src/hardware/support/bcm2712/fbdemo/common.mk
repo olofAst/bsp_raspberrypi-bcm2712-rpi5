@@ -2,6 +2,10 @@ ifndef QCONFIG
 QCONFIG=qconfig.mk
 endif
 include $(QCONFIG)
+# framebuffer access shared with camgrab-rpi5
+EXTRA_SRCVPATH += $(PROJECT_ROOT)/../rpi5fb
+EXTRA_INCVPATH += $(PROJECT_ROOT)/../rpi5fb
+
 include $(MKFILES_ROOT)/qmacros.mk
 
 NAME = fbdemo-rpi5

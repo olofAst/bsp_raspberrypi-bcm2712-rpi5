@@ -139,12 +139,12 @@ stty -a < /dev/ser10
 echo "UART10 FR / IMSC / RIS before:"; peek 0x107d001018; peek 0x107d001038 2
 echo "AON pinmux:"; peek 0x107d510700 8
 echo "AON GPIO:"; peek 0x107d517c00 8
-echo "==== DIAG: PRESS A FEW KEYS NOW (15 seconds) ===="
+echo "==== DIAG: PRESS A FEW KEYS NOW (5 seconds) ===="
 sleep 1
 # Block the UART interrupt at the GIC (clear-enable for irq 152 and 153) so the
 # driver cannot take anything: whatever reaches the UART must stay in its FIFO.
 peek 0x107fff9190 = 0x03000000
-sleep 15
+sleep 5
 FR=$(peek 0x107d001018)
 RIS=$(peek 0x107d00103c)
 PEND=$(peek 0x107fff9210)
@@ -393,6 +393,8 @@ openssl     tags=*
 /sbin/fan-rpi5=fan-rpi5
 /bin/fbdemo-rpi5=fbdemo-rpi5
 /bin/peek=peek
+/bin/camgrab-rpi5=camgrab-rpi5
+/usr/lib/libcapture-usb-uvc.so=libcapture-usb-uvc.so
 /bin/usbkbd-tty=usbkbd-tty
 
 

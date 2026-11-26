@@ -1,15 +1,16 @@
 %C - draw into the Raspberry Pi firmware framebuffer (HDMI)
 
 Syntax:
-%C [-w width] [-h height] [-b depth] [-n]
+%C [-w width -h height] [-b depth] [-n]
 
 Options:
-   -w width    Framebuffer width in pixels (default 640)
-   -h height   Framebuffer height in pixels (default 480)
-   -b depth    Bits per pixel to ask for: 32 (default), 24 or 16. The demo
-               draws in whatever depth the firmware actually grants.
+   -w width    Ask the firmware for this framebuffer width  } both needed;
+   -h height   Ask the firmware for this framebuffer height } default: keep
+               the mode the firmware set up for the monitor
+   -b depth    Ask for this many bits per pixel (16, 24 or 32)
    -n          Do not wait for Enter before exiting
 
-The framebuffer is requested from the VideoCore firmware through the
-mailbox property channel; no graphics driver is involved. The resolution
-must be one the attached monitor accepts.
+The framebuffer is obtained from the VideoCore firmware through the mailbox
+property channel; no graphics driver is involved. The demo draws in whatever
+mode the firmware actually grants. The Pi 5 firmware keeps the monitor's
+native resolution at 16 bits per pixel regardless of what is asked for.

@@ -1,0 +1,19 @@
+%C - grab frames from a USB (UVC) camera and show them on HDMI
+
+Syntax:
+%C [options]
+
+Options:
+   -d index    Camera index (default 0)
+   -w width    Frame width to ask the camera for   } default: whatever the
+   -h height   Frame height to ask the camera for  } camera driver selects
+   -f format   Pixel format to ask for and to assume when displaying:
+               yuy2, uyvy, y8, y16 (default: driver's choice, layout guessed)
+   -n count    Stop after this many frames (default: run until killed)
+   -o file     Save the first frame, raw as received, to this file
+   -x          Do not open the framebuffer (probe / save only)
+   -v          Driver verbosity; repeat for descriptor dumps (see slog2info)
+
+Uses the SDP's libcapture-usb-uvc.so on top of io-usb-otg, and the firmware
+framebuffer for display. The picture is shown 1:1 in greyscale (luma only),
+cropped to the screen. Start with:  %C -v -n 5
