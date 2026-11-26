@@ -19,6 +19,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <termios.h>
+#include <signal.h>
 #include <sys/queue.h>
 #include <sys/hiddi.h>
 /* <sys/hidut.h> of SDP 7.1 pulls in a header that is not shipped; only this is needed */
@@ -45,7 +46,13 @@ static const char shifted[]   = "ABCDEFGHIJKLMNOPQRSTUVWXYZ!@#$%^&*()\r\033\177\
 
 static void inject(const char *s, int n)
 {
-    if (tcinject(tty_fd, (char *)s, n) == -1) {
+    /*
+     * A negative count selects the raw input queue: the characters then go
+     * through the normal tty processing (echo, line editing, CR->NL) and are
+     * also seen by programs that read the tty in raw mode, such as the ksh
+     * line editor. A positive count would write to the canonical queue only.
+     */
+    if (tcinject(tty_fd, (char *)s, -n) == -1) {
         fprintf(stderr, "usbkbd-tty: tcinject: %s\n", strerror(errno));
     }
 }
@@ -183,7 +190,20 @@ int main(int argc, char *argv[])
         tty = argv[optind];
     }
 
-    tty_fd = open(tty, O_RDWR);
+    /*
+     * Become a daemon in a session of its own, with no controlling terminal.
+     * Otherwise, once a login shell owns the tty, this process counts as a
+     * background job of that terminal and tcinject() stops it with SIGTTOU.
+     */
+    if (daemon(1, 1) == -1) {
+        fprintf(stderr, "usbkbd-tty: daemon: %s\n", strerror(errno));
+        return EXIT_FAILURE;
+    }
+    signal(SIGTTOU, SIG_IGN);
+    signal(SIGTTIN, SIG_IGN);
+    signal(SIGHUP, SIG_IGN);
+
+    tty_fd = open(tty, O_RDWR | O_NOCTTY);
     if (tty_fd == -1) {
         fprintf(stderr, "usbkbd-tty: %s: %s\n", tty, strerror(errno));
         return EXIT_FAILURE;

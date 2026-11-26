@@ -206,7 +206,7 @@ io-hid -d usb
 # No text console exists for this board on QNX 7.1: let a USB keyboard type
 # into the serial console instead (output still appears on the serial port).
 waitfor /dev/io-hid/io-hid 4
-usbkbd-tty /dev/ser10 &
+usbkbd-tty /dev/ser10
 }
 
 net_start.sh = {
@@ -241,12 +241,12 @@ uart0_console.sh = {
 # Second console on the 40-pin header: RP1 UART0, GPIO14 = TX (pin 8),
 # GPIO15 = RX (pin 10), GND on pin 6. 115200 8N1, 3.3V levels.
 if [ ! -e /dev/shmem/rp1_ok ]; then exit 0; fi
-echo "Starting UART0 console on the 40-pin header (pins 8/10, /dev/ser0)"
+echo "Starting UART0 console on the 40-pin header (pins 8/10, /dev/ser1)"
 gpio-rp1 set 14 a4 pn
 gpio-rp1 set 15 a4 pu
-devc-serpl011 -b115200 -c50000000 -e -F -u0 0x1f00030000^2,185
-waitfor /dev/ser0 4
-on -t /dev/ser0 /bin/ksh &
+devc-serpl011 -b115200 -c50000000 -e -F -u1 0x1f00030000^2,185
+waitfor /dev/ser1 4
+on -t /dev/ser1 /bin/ksh &
 }
 
 uart4_console.sh = {
